@@ -4,7 +4,7 @@
     There is deliberately no TZ field: Unraid already passes the server's time
     zone to every container, and a blank field would override it.
   -->
-  <Name>NoFixedAddress</Name>
+  <Name>No-Fixed-Address</Name>
   <Repository>ghcr.io/mdr6273/no-fixed-address:latest</Repository>
   <Registry>https://github.com/mdr6273/no-fixed-address/pkgs/container/no-fixed-address</Registry>
   <Network>bridge</Network>
