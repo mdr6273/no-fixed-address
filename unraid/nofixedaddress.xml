@@ -18,7 +18,7 @@
   <WebUI/>
   <TemplateURL>https://raw.githubusercontent.com/mdr6273/no-fixed-address/main/unraid/nofixedaddress.xml</TemplateURL>
   <Icon>https://raw.githubusercontent.com/mdr6273/no-fixed-address/main/unraid/nofixedaddress.png</Icon>
-  <ExtraParams/>
+  <ExtraParams>--cap-drop=ALL --security-opt=no-new-privileges --read-only --tmpfs /tmp</ExtraParams>
   <PostArgs/>
   <CPUset/>
   <DateInstalled/>

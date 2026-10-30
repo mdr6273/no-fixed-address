@@ -115,7 +115,9 @@ nfa_start() {
             shift
             set -- "$@" -e "$kv"
         done
-        CID=$(docker run -d --network "$DOCKER_NETWORK" "$@" "$IMAGE")
+        # Locked down the way the README and the Unraid template run it.
+        CID=$(docker run -d --network "$DOCKER_NETWORK" --read-only --tmpfs /tmp \
+            --cap-drop ALL --security-opt no-new-privileges "$@" "$IMAGE")
     else
         rm -rf "$WORK/state"
         (

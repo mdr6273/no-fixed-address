@@ -114,6 +114,7 @@ Notes for Unraid:
 - **Time zone:** Unraid passes your server's time zone to every container, so log timestamps already match it. The template has no `TZ` field on purpose, because a blank one would override that.
 - **IPv6:** the default bridge network has no IPv6. To update AAAA records, set **Network Type** to **Host**, or use a custom network with IPv6 enabled.
 - **Advanced settings:** TTL, log level, a token file and the lookup URLs are under **Show more settings**.
+- **Locked down:** the template's **Extra Parameters** (shown with **Advanced View**) drop all Linux capabilities, block privilege escalation, and make the container's filesystem read-only apart from a scratch area at `/tmp`. The container needs nothing more, so leave them in place.
 
 ## docker run
 
@@ -121,12 +122,18 @@ Notes for Unraid:
 docker run -d \
   --name nofixedaddress \
   --restart unless-stopped \
+  --read-only --tmpfs /tmp \
+  --cap-drop ALL --security-opt no-new-privileges \
   -e CF_API_TOKEN=your-token \
   -e CF_ZONE=example.com \
   -e CF_RECORDS=home.example.com,vpn.example.com \
   -e TZ=America/Chicago \
   ghcr.io/mdr6273/nofixedaddress:latest
 ```
+
+The `--read-only`, `--tmpfs`, `--cap-drop` and `--security-opt` lines are
+optional but recommended: the container needs no privileges and writes only to
+`/tmp`.
 
 `latest` follows the newest release, and each release is also published under
 its exact version, such as `0.0.1`. Until 1.0.0, any release may change
