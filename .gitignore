@@ -1,0 +1,15 @@
+# Local settings and secrets
+.env
+*.token
+secrets/
+
+# Python bytecode from the test mock
+__pycache__/
+*.pyc
+
+# Editors and operating systems
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
