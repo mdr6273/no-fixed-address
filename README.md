@@ -40,7 +40,7 @@ else:
 ## How it works
 
 1. At startup it checks every setting, verifies the API token with Cloudflare and looks up the zone. Bad settings stop the container with a message saying what to fix.
-2. It finds the public address by asking `https://1.1.1.1/cdn-cgi/trace`, falling back to `api.ipify.org` and `ifconfig.me`. IPv6 uses `[2606:4700:4700::1111]/cdn-cgi/trace` and `api6.ipify.org`. Answers are strictly validated, and private or reserved addresses are rejected, so a bad lookup can never be written to your DNS.
+2. It finds the public address by asking `https://1.1.1.1/cdn-cgi/trace`, falling back to `api.ipify.org` and `ifconfig.me`. IPv6 uses `[2606:4700:4700::1111]/cdn-cgi/trace` and `api6.ipify.org`. Answers are strictly validated, and private or reserved addresses are rejected, so a failed or garbled lookup can't put a nonsense address in your DNS. Validation can't prove an address is really yours, which is why every default service uses HTTPS.
 3. It compares the address with each record and updates only the ones that differ.
 4. It sleeps until the next check. If something failed along the way, it retries after 60 seconds, then 2 minutes, then 4, up to an hour, until a check succeeds.
 
@@ -173,8 +173,14 @@ secrets:
     file: ./cf_api_token.txt
 ```
 
-The container runs as uid 10001, so the file must be readable by it, for
-example with `chmod 0444 cf_api_token.txt`.
+The container runs as uid 10001, so the file must be readable by that user.
+Make it readable by no one else, since anyone who can read it can change
+every record in the zone:
+
+```sh
+sudo chown 10001:10001 cf_api_token.txt
+sudo chmod 0400 cf_api_token.txt
+```
 
 ## Configuration
 
@@ -202,10 +208,10 @@ These rarely need changing:
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `IPV4_SOURCES` | `https://1.1.1.1/cdn-cgi/trace,https://api.ipify.org,https://ifconfig.me/ip` | Comma-separated lookup URLs, tried in order. Each must answer with the bare address or with an `ip=` line. |
+| `IPV4_SOURCES` | `https://1.1.1.1/cdn-cgi/trace,https://api.ipify.org,https://ifconfig.me/ip` | Comma-separated lookup URLs, tried in order. Each must answer with the bare address or with an `ip=` line. Use `https://` URLs: plain `http://` works but is warned about at startup, because anyone on the network path could answer with an address of their choosing. |
 | `IPV6_SOURCES` | `https://[2606:4700:4700::1111]/cdn-cgi/trace,https://api6.ipify.org` | The same, for IPv6. |
 | `STATE_DIR` | `/tmp/nofixedaddress` | Where the health check's timestamp is kept. |
-| `CF_API_URL` | `https://api.cloudflare.com/client/v4` | Only for testing against a stand-in for the API. |
+| `CF_API_URL` | `https://api.cloudflare.com/client/v4` | Only for testing against a stand-in for the API. The token is sent to this URL, and the container warns at startup when it isn't the default. |
 
 ## Pointing more names at it
 
@@ -325,7 +331,7 @@ the container reports unhealthy.
 None of the lookup services answered. Check that the container can make
 outbound HTTPS requests (firewall rules, DNS, a proxy). Behind a proxy, set
 the usual `HTTPS_PROXY` variable; curl picks it up. You can also point
-`IPV4_SOURCES` at services you prefer.
+`IPV4_SOURCES` at services you prefer, as long as they use `https://`.
 
 #### `TTL=300 has no effect`
 
@@ -348,7 +354,7 @@ restart policy keeps restarting it until the setting is fixed.
 
 - The token only needs DNS edit and zone read rights on a single zone.
 - The container runs as an unprivileged user (uid 10001), needs no capabilities, and works with a read-only root filesystem plus a tmpfs at `/tmp`.
-- The token is never logged, is passed to curl on standard input rather than its command line, and is removed from the environment of every process the script starts. `docker inspect` still shows environment variables, so use `CF_API_TOKEN_FILE` if that matters to you.
+- The token is never logged, and reaches curl on standard input rather than its command line. The script removes it from its own environment before it starts curl or jq. A token passed as `CF_API_TOKEN` still stays in the container's configuration, where `docker inspect`, `docker exec` sessions and the health check can see it. Use `CF_API_TOKEN_FILE` to avoid that.
 - Addresses from the lookup services are validated before use, and private, loopback and reserved ranges are refused.
 
 To report a vulnerability, see [SECURITY.md](SECURITY.md).
