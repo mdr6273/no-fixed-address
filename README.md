@@ -110,7 +110,7 @@ either way.
 Notes for Unraid:
 
 - **Keep the token out of screenshots:** the window Unraid shows after **Apply** prints the whole `docker run` command, token included. Blank it out before sharing that window, for example when asking for help.
-- **Updates:** when a new version is published, the Docker tab shows an update for the container. Apply it from there, after reading the [changelog](CHANGELOG.md).
+- **Updates:** when a new version is published, the Docker tab shows an update for the container. Apply it from there, after reading the [changelog](CHANGELOG.md). See [Updating](#updating).
 - **Time zone:** Unraid passes your server's time zone to every container, so log timestamps already match it. The template has no `TZ` field on purpose, because a blank one would override that.
 - **IPv6:** the default bridge network has no IPv6. To update AAAA records, set **Network Type** to **Host**, or use a custom network with IPv6 enabled.
 - **Advanced settings:** TTL, log level, a token file and the lookup URLs are under **Show more settings**.
@@ -188,6 +188,20 @@ every record in the zone:
 sudo chown 10001:10001 cf_api_token.txt
 sudo chmod 0400 cf_api_token.txt
 ```
+
+## Updating
+
+Read the [changelog](CHANGELOG.md) before updating: until 1.0.0, any release
+may change behaviour. Your settings carry over, because they live in the
+container's configuration, not inside the image.
+
+- **Unraid:** when a new version is published, the Docker tab shows **update ready** next to the container (**Check for Updates** looks right away). Select it and apply the update.
+- **Docker Compose:** in the folder with your compose file, run `docker compose pull`, then `docker compose up -d`.
+- **docker run:** run `docker pull ghcr.io/mdr6273/nofixedaddress:latest`, remove the container with `docker rm -f nofixedaddress`, and start it again with the same `docker run` command. A running container keeps using the image it started with.
+
+These steps assume the `latest` tag. If you pinned an exact version such as
+`0.0.1`, change the tag to the new version instead. A pinned tag never changes,
+so Unraid never shows an update for it.
 
 ## Configuration
 
