@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.0.2] - 2026-10-30
+
+### Changed
+
+- The Unraid template is now named No-Fixed-Address, to match the repository and the image. Containers installed from the old template keep their name.
+
 ## [0.0.1] - 2026-10-30
 
 ### Added
@@ -20,5 +26,6 @@ All notable changes to this project are documented here. The format follows
 - Multi-architecture image (linux/amd64, linux/arm64) on GitHub Container Registry, running as a non-root user.
 - Unraid template and icon. The template runs the container with no capabilities and a read-only filesystem.
 
-[Unreleased]: https://github.com/mdr6273/no-fixed-address/compare/v0.0.1...HEAD
+[Unreleased]: https://github.com/mdr6273/no-fixed-address/compare/v0.0.2...HEAD
+[0.0.2]: https://github.com/mdr6273/no-fixed-address/compare/v0.0.1...v0.0.2
 [0.0.1]: https://github.com/mdr6273/no-fixed-address/releases/tag/v0.0.1
