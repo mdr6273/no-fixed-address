@@ -1,0 +1,44 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <!--
+    There is deliberately no TZ field: Unraid already passes the server's time
+    zone to every container, and a blank field would override it.
+  -->
+  <Name>NoFixedAddress</Name>
+  <Repository>ghcr.io/mdr6273/nofixedaddress:latest</Repository>
+  <Registry>https://github.com/mdr6273/no-fixed-address/pkgs/container/nofixedaddress</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/mdr6273/no-fixed-address/issues</Support>
+  <Project>https://github.com/mdr6273/no-fixed-address</Project>
+  <Overview>Self-hosted dynamic DNS for Cloudflare DNS. Keeps A (and optionally AAAA) records pointed at your server's current public IP address, so names like home.example.com keep working after your ISP changes it. There is no third-party account to renew or confirm every month: all it needs is a Cloudflare API token limited to one zone. It checks at startup and then once a day by default, and only writes when something has changed. Set Dry run to true for the first start to see what it would change without changing anything.</Overview>
+  <Category>Network:DNS</Category>
+  <WebUI/>
+  <TemplateURL>https://raw.githubusercontent.com/mdr6273/no-fixed-address/main/unraid/nofixedaddress.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/mdr6273/no-fixed-address/main/unraid/nofixedaddress.png</Icon>
+  <ExtraParams/>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires/>
+  <Config Name="Cloudflare API token" Target="CF_API_TOKEN" Default="" Mode="" Description="A Cloudflare API token with Zone / Zone / Read and Zone / DNS / Edit permissions, limited to your zone. Create it under My Profile, API Tokens in the Cloudflare dashboard. The README has step-by-step instructions." Type="Variable" Display="always" Required="true" Mask="true"/>
+  <Config Name="Zone" Target="CF_ZONE" Default="" Mode="" Description="The domain the records belong to, as it appears in the Cloudflare dashboard, for example example.com." Type="Variable" Display="always" Required="true" Mask="false"/>
+  <Config Name="Records" Target="CF_RECORDS" Default="" Mode="" Description="Comma-separated names to keep updated, for example home.example.com,vpn.example.com. Use @ for the zone itself." Type="Variable" Display="always" Required="true" Mask="false"/>
+  <Config Name="Check interval (seconds)" Target="INTERVAL" Default="86400" Mode="" Description="How often to check whether the public IP has changed. 86400 is once a day, 3600 is hourly. A check always runs when the container starts." Type="Variable" Display="always" Required="false" Mask="false">86400</Config>
+  <Config Name="Update A records (IPv4)" Target="IPV4" Default="true|false" Mode="" Description="Keep A records pointed at the public IPv4 address." Type="Variable" Display="always" Required="false" Mask="false">true</Config>
+  <Config Name="Update AAAA records (IPv6)" Target="IPV6" Default="false|true" Mode="" Description="Keep AAAA records pointed at the public IPv6 address. The container needs IPv6 connectivity for this: use Host networking or a custom network with IPv6 enabled." Type="Variable" Display="always" Required="false" Mask="false">false</Config>
+  <Config Name="Proxied" Target="PROXIED" Default="" Mode="" Description="true or false to set Cloudflare's proxy on every record, or blank to leave each record as it is. Records used for VPNs, game servers and similar must not be proxied." Type="Variable" Display="always" Required="false" Mask="false"/>
+  <Config Name="Create missing records" Target="CREATE_IF_MISSING" Default="false|true" Mode="" Description="Create records that do not exist yet. When false, a missing record is logged as an error and skipped." Type="Variable" Display="always" Required="false" Mask="false">false</Config>
+  <Config Name="Dry run" Target="DRY_RUN" Default="false|true" Mode="" Description="Log what would change without changing anything. Useful for the first start." Type="Variable" Display="always" Required="false" Mask="false">false</Config>
+  <Config Name="TTL (seconds)" Target="TTL" Default="" Mode="" Description="1 for automatic, or 60 to 86400. Blank leaves each record's TTL as it is. Ignored for proxied records, which always use automatic TTL." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="Log level" Target="LOG_LEVEL" Default="info|debug|warn|error" Mode="" Description="debug also logs every check and API call, which helps when reporting a problem. The token is never logged." Type="Variable" Display="advanced" Required="false" Mask="false">info</Config>
+  <Config Name="API token file" Target="CF_API_TOKEN_FILE" Default="" Mode="" Description="Alternative to the API token field: the path inside the container of a file holding the token, mapped in with a Path. Set one or the other, not both." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="IPv4 lookup URLs" Target="IPV4_SOURCES" Default="" Mode="" Description="Comma-separated URLs used to find the public IPv4 address, tried in order. Blank uses https://1.1.1.1/cdn-cgi/trace, https://api.ipify.org and https://ifconfig.me/ip." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="IPv6 lookup URLs" Target="IPV6_SOURCES" Default="" Mode="" Description="Comma-separated URLs used to find the public IPv6 address, tried in order. Blank uses https://[2606:4700:4700::1111]/cdn-cgi/trace and https://api6.ipify.org." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="API URL" Target="CF_API_URL" Default="" Mode="" Description="Leave blank. Only for testing against a stand-in for the Cloudflare API." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="State directory" Target="STATE_DIR" Default="" Mode="" Description="Leave blank. Where the health check's timestamp is kept; defaults to /tmp/nofixedaddress." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+</Container>

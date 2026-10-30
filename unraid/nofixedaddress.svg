@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <title>No Fixed Address</title>
+  <rect width="256" height="256" rx="56" fill="#1e293b"/>
+  <path fill="#2dd4bf" d="M128 224 L74.92 136.03 A62 62 0 1 1 181.08 136.03 Z"/>
+  <path fill="none" stroke="#1e293b" stroke-width="12" d="M149.45 86 A28 28 0 1 1 110 82.55"/>
+  <path fill="#1e293b" d="M101.65 72.59 L121.49 72.91 L118.36 92.51 Z"/>
+</svg>
