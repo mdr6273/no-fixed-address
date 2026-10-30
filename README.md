@@ -40,7 +40,7 @@ else:
 ## How it works
 
 1. At startup it checks every setting, verifies the API token with Cloudflare and looks up the zone. Bad settings stop the container with a message saying what to fix.
-2. It finds the public address by asking `https://1.1.1.1/cdn-cgi/trace`, falling back to `api.ipify.org` and `ifconfig.me`. IPv6 uses `[2606:4700:4700::1111]/cdn-cgi/trace` and `api6.ipify.org`. Answers are strictly validated, and private or reserved addresses are rejected, so a bad lookup can never be written to your DNS.
+2. It finds the public address by asking `https://1.1.1.1/cdn-cgi/trace`, falling back to `api.ipify.org` and `ifconfig.me`. IPv6 uses `[2606:4700:4700::1111]/cdn-cgi/trace` and `api6.ipify.org`. Answers are strictly validated, and private or reserved addresses are rejected, so a failed or garbled lookup can't put a nonsense address in your DNS. Validation can't prove an address is really yours, which is why every default service uses HTTPS.
 3. It compares the address with each record and updates only the ones that differ.
 4. It sleeps until the next check. If something failed along the way, it retries after 60 seconds, then 2 minutes, then 4, up to an hour, until a check succeeds.
 
@@ -55,7 +55,7 @@ else:
      -e CF_ZONE=example.com \
      -e CF_RECORDS=home.example.com \
      -e DRY_RUN=true \
-     ghcr.io/mdr6273/nofixedaddress:1
+     ghcr.io/mdr6273/no-fixed-address:latest
    ```
 
    It logs what it would change, then waits for the next check. Press Ctrl+C to stop it.
@@ -103,15 +103,18 @@ either way.
    ```
 
 2. On the **Docker** tab, select **Add Container**, and choose **NoFixedAddress** from the **Template** list (under user templates).
-3. Fill in **Cloudflare API token**, **Zone** and **Records**. For the first start, set **Dry run** to `true`.
+3. Fill in **Cloudflare API token**, **Zone** and **Records**. Records are full names, such as `home.example.com`, not just `home`. For the first start, set **Dry run** to `true`.
 4. Select **Apply**, then open the container's log from its icon on the Docker tab. It should show the token being verified and what it would change.
 5. When the log looks right, edit the container, set **Dry run** back to `false`, and apply.
 
 Notes for Unraid:
 
+- **Keep the token out of screenshots:** the window Unraid shows after **Apply** prints the whole `docker run` command, token included. Blank it out before sharing that window, for example when asking for help.
+- **Updates:** when a new version is published, the Docker tab shows an update for the container. Apply it from there, after reading the [changelog](CHANGELOG.md). See [Updating](#updating).
 - **Time zone:** Unraid passes your server's time zone to every container, so log timestamps already match it. The template has no `TZ` field on purpose, because a blank one would override that.
 - **IPv6:** the default bridge network has no IPv6. To update AAAA records, set **Network Type** to **Host**, or use a custom network with IPv6 enabled.
 - **Advanced settings:** TTL, log level, a token file and the lookup URLs are under **Show more settings**.
+- **Locked down:** the template's **Extra Parameters** (shown with **Advanced View**) drop all Linux capabilities, block privilege escalation, and make the container's filesystem read-only apart from a scratch area at `/tmp`. The container needs nothing more, so leave them in place.
 
 ## docker run
 
@@ -119,15 +122,23 @@ Notes for Unraid:
 docker run -d \
   --name nofixedaddress \
   --restart unless-stopped \
+  --read-only --tmpfs /tmp \
+  --cap-drop ALL --security-opt no-new-privileges \
   -e CF_API_TOKEN=your-token \
   -e CF_ZONE=example.com \
   -e CF_RECORDS=home.example.com,vpn.example.com \
   -e TZ=America/Chicago \
-  ghcr.io/mdr6273/nofixedaddress:1
+  ghcr.io/mdr6273/no-fixed-address:latest
 ```
 
-The `1` tag follows the latest 1.x release; `latest` and exact versions such
-as `1.0.0` are also published.
+The `--read-only`, `--tmpfs`, `--cap-drop` and `--security-opt` lines are
+optional but recommended: the container needs no privileges and writes only to
+`/tmp`.
+
+`latest` follows the newest release, and each release is also published under
+its exact version, such as `0.0.1`. Until 1.0.0, any release may change
+behaviour, so pin an exact version if you'd rather upgrade on your own
+schedule, and read the [changelog](CHANGELOG.md) before moving to a new one.
 
 ## Docker Compose
 
@@ -137,7 +148,7 @@ file, including a read-only, unprivileged container. The short version:
 ```yaml
 services:
   nofixedaddress:
-    image: ghcr.io/mdr6273/nofixedaddress:1
+    image: ghcr.io/mdr6273/no-fixed-address:latest
     restart: unless-stopped
     environment:
       CF_API_TOKEN: ${CF_API_TOKEN}   # from a .env file next to the compose file
@@ -155,7 +166,7 @@ example with a Compose secret:
 ```yaml
 services:
   nofixedaddress:
-    image: ghcr.io/mdr6273/nofixedaddress:1
+    image: ghcr.io/mdr6273/no-fixed-address:latest
     restart: unless-stopped
     environment:
       CF_API_TOKEN_FILE: /run/secrets/cf_api_token
@@ -169,8 +180,28 @@ secrets:
     file: ./cf_api_token.txt
 ```
 
-The container runs as uid 10001, so the file must be readable by it, for
-example with `chmod 0444 cf_api_token.txt`.
+The container runs as uid 10001, so the file must be readable by that user.
+Make it readable by no one else, since anyone who can read it can change
+every record in the zone:
+
+```sh
+sudo chown 10001:10001 cf_api_token.txt
+sudo chmod 0400 cf_api_token.txt
+```
+
+## Updating
+
+Read the [changelog](CHANGELOG.md) before updating: until 1.0.0, any release
+may change behaviour. Your settings carry over, because they live in the
+container's configuration, not inside the image.
+
+- **Unraid:** when a new version is published, the Docker tab shows **update ready** next to the container (**Check for Updates** looks right away). Select it and apply the update.
+- **Docker Compose:** in the folder with your compose file, run `docker compose pull`, then `docker compose up -d`.
+- **docker run:** run `docker pull ghcr.io/mdr6273/no-fixed-address:latest`, remove the container with `docker rm -f nofixedaddress`, and start it again with the same `docker run` command. A running container keeps using the image it started with.
+
+These steps assume the `latest` tag. If you pinned an exact version such as
+`0.0.1`, change the tag to the new version instead. A pinned tag never changes,
+so Unraid never shows an update for it.
 
 ## Configuration
 
@@ -179,7 +210,7 @@ example with `chmod 0444 cf_api_token.txt`.
 | `CF_API_TOKEN` | *required* | The [scoped API token](#creating-the-cloudflare-api-token). |
 | `CF_API_TOKEN_FILE` | | Path to a file containing the token, such as a Docker secret. Use instead of `CF_API_TOKEN`, not as well. |
 | `CF_ZONE` | *required* | The zone the records belong to, such as `example.com`. |
-| `CF_RECORDS` | *required* | Comma-separated names to keep updated, such as `home.example.com,vpn.example.com`. Use `@` for the zone itself; wildcards such as `*.example.com` work too. |
+| `CF_RECORDS` | *required* | Comma-separated full names to keep updated, such as `home.example.com,vpn.example.com` (not just `home`). Use `@` for the zone itself; wildcards such as `*.example.com` work too. Often one name is enough: see [Pointing more names at it](#pointing-more-names-at-it). |
 | `INTERVAL` | `86400` | Seconds between checks. A check always runs at startup. |
 | `IPV4` | `true` | Keep A records pointed at the public IPv4 address. |
 | `IPV6` | `false` | Keep AAAA records pointed at the public IPv6 address. Needs [IPv6 inside the container](#could-not-determine-the-public-ipv6-address). |
@@ -198,10 +229,33 @@ These rarely need changing:
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `IPV4_SOURCES` | `https://1.1.1.1/cdn-cgi/trace,https://api.ipify.org,https://ifconfig.me/ip` | Comma-separated lookup URLs, tried in order. Each must answer with the bare address or with an `ip=` line. |
+| `IPV4_SOURCES` | `https://1.1.1.1/cdn-cgi/trace,https://api.ipify.org,https://ifconfig.me/ip` | Comma-separated lookup URLs, tried in order. Each must answer with the bare address or with an `ip=` line. Use `https://` URLs: plain `http://` works but is warned about at startup, because anyone on the network path could answer with an address of their choosing. |
 | `IPV6_SOURCES` | `https://[2606:4700:4700::1111]/cdn-cgi/trace,https://api6.ipify.org` | The same, for IPv6. |
 | `STATE_DIR` | `/tmp/nofixedaddress` | Where the health check's timestamp is kept. |
-| `CF_API_URL` | `https://api.cloudflare.com/client/v4` | Only for testing against a stand-in for the API. |
+| `CF_API_URL` | `https://api.cloudflare.com/client/v4` | Only for testing against a stand-in for the API. The token is sent to this URL, and the container warns at startup when it isn't the default. |
+
+## Pointing more names at it
+
+The container only needs to manage one record. Point every other name at it
+with a CNAME, and they all follow it when your address changes:
+
+| Name | Type | Content |
+| --- | --- | --- |
+| `home.example.com` | A | Your public IP, kept current by No Fixed Address |
+| `nas.example.com` | CNAME | `home.example.com` |
+| `photos.example.com` | CNAME | `home.example.com` |
+
+`CF_RECORDS=home.example.com` then covers all of them, and adding a service
+never means changing the container's settings.
+
+Each name has its own proxy setting in Cloudflare (the orange or grey cloud),
+and a few rules decide which to use:
+
+- **A CNAME can be proxied even when its target isn't**, but not the other way round. A DNS-only CNAME pointing at a proxied record still resolves to Cloudflare's addresses. If any name needs to be DNS-only, keep the managed record DNS-only (`PROXIED=false`) and choose per CNAME.
+- **Keep anything that isn't a website DNS-only**, such as a VPN, game server or SSH. Cloudflare's proxy only carries HTTP and HTTPS.
+- **Large uploads and video usually need DNS-only.** On the Free and Pro plans the proxy rejects requests over 100 MB, and Cloudflare's terms restrict serving video through it, which matters for photo and media servers such as Immich, Jellyfin or Plex.
+- **Keep proxied names one level deep.** Cloudflare's free certificate covers `example.com` and names like `nas.example.com`, but not `nas.home.example.com`. DNS-only names can be any depth, because your own certificate (for example from Let's Encrypt on a reverse proxy) is the one browsers see.
+- **A DNS-only name shows your home IP** to anyone who looks it up. Proxied names don't, as long as nothing else gives the address away.
 
 ## Testing with DRY_RUN
 
@@ -210,7 +264,7 @@ zone and records, detecting the address) but never writes to Cloudflare.
 Changes it would have made are logged with a `[dry-run]` prefix:
 
 ```text
-2026-10-29T23:23:52-0500 info  No Fixed Address 1.0.0 starting
+2026-10-29T23:23:52-0500 info  No Fixed Address 0.0.1 starting
 2026-10-29T23:23:53-0500 info  zone example.com: keeping A records for home.example.com, vpn.example.com pointed at this host
 2026-10-29T23:23:53-0500 info  checking every 86400s; proxied: as is, ttl: as is, create missing records: true
 2026-10-29T23:23:53-0500 info  dry run: changes are logged but not applied
@@ -259,6 +313,11 @@ with the `curl` command in [Creating the Cloudflare API token](#creating-the-clo
 and make sure it's an API token rather than the Global API Key. The container
 exits with status 1, since retrying can't fix this.
 
+#### `CF_RECORDS entry 'home' is not in the zone example.com`
+
+Records are full names. Use `home.example.com`, not `home`. The container
+exits with status 2 until the setting is fixed.
+
 #### `zone example.com was not found`
 
 `CF_ZONE` must be the zone (`example.com`), not a record name
@@ -293,7 +352,7 @@ the container reports unhealthy.
 None of the lookup services answered. Check that the container can make
 outbound HTTPS requests (firewall rules, DNS, a proxy). Behind a proxy, set
 the usual `HTTPS_PROXY` variable; curl picks it up. You can also point
-`IPV4_SOURCES` at services you prefer.
+`IPV4_SOURCES` at services you prefer, as long as they use `https://`.
 
 #### `TTL=300 has no effect`
 
@@ -316,7 +375,7 @@ restart policy keeps restarting it until the setting is fixed.
 
 - The token only needs DNS edit and zone read rights on a single zone.
 - The container runs as an unprivileged user (uid 10001), needs no capabilities, and works with a read-only root filesystem plus a tmpfs at `/tmp`.
-- The token is never logged, is passed to curl on standard input rather than its command line, and is removed from the environment of every process the script starts. `docker inspect` still shows environment variables, so use `CF_API_TOKEN_FILE` if that matters to you.
+- The token is never logged, and reaches curl on standard input rather than its command line. The script removes it from its own environment before it starts curl or jq. A token passed as `CF_API_TOKEN` still stays in the container's configuration, where `docker inspect`, `docker exec` sessions and the health check can see it. Use `CF_API_TOKEN_FILE` to avoid that.
 - Addresses from the lookup services are validated before use, and private, loopback and reserved ranges are refused.
 
 To report a vulnerability, see [SECURITY.md](SECURITY.md).

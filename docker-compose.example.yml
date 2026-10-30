@@ -2,7 +2,7 @@
 # in a .env file next to it (CF_API_TOKEN=...), then run: docker compose up -d
 services:
   nofixedaddress:
-    image: ghcr.io/mdr6273/nofixedaddress:1
+    image: ghcr.io/mdr6273/no-fixed-address:latest
     container_name: nofixedaddress
     restart: unless-stopped
     environment:
@@ -38,8 +38,8 @@ services:
 #     secrets:
 #       - cf_api_token
 #
-# and this at the top level. The file must be readable by uid 10001, for
-# example with chmod 0444.
+# and this at the top level. The file must be readable by uid 10001 and by no
+# one else: sudo chown 10001:10001 cf_api_token.txt && sudo chmod 0400 cf_api_token.txt
 #
 # secrets:
 #   cf_api_token:
