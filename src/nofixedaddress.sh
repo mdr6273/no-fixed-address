@@ -163,7 +163,10 @@ url_list_setting() {
     IFS=$saved_ifs
     for url do
         case $url in
-            '' | http://?* | https://?*) ;;
+            '' | https://?*) ;;
+            # Validation proves an answer is a public address, not that it is
+            # this host's; over plain http anyone on the path can choose it.
+            http://?*) log warn "$name entry $url uses plain http, so anyone on the network path could answer with an address of their choosing; use https" ;;
             *) config_error "$name entry '$url' is not an http:// or https:// URL" ;;
         esac
     done
@@ -289,6 +292,8 @@ load_config() {
         http://?* | https://?*) ;;
         *) config_error "CF_API_URL must be an http:// or https:// URL, not '$CF_API_URL'" ;;
     esac
+    [ "$CF_API_URL" = "$DEFAULT_API_URL" ] ||
+        log warn "CF_API_URL is set to $CF_API_URL, so the API token is sent there instead of to Cloudflare"
 
     STATE_DIR=${STATE_DIR:-}
     trim_var STATE_DIR
@@ -343,7 +348,7 @@ is_public_ipv4() {
         100) [ "$2" -lt 64 ] || [ "$2" -gt 127 ] || return 1 ;;
         169) [ "$2" -ne 254 ] || return 1 ;;
         172) [ "$2" -lt 16 ] || [ "$2" -gt 31 ] || return 1 ;;
-        192) case $2.$3 in 168.* | 0.0 | 0.2) return 1 ;; esac ;;
+        192) case $2.$3 in 168.* | 0.0 | 0.2 | 88.99) return 1 ;; esac ;;
         198) case $2.$3 in 18.* | 19.* | 51.100) return 1 ;; esac ;;
         203) [ "$2.$3" != 0.113 ] || return 1 ;;
     esac
@@ -406,11 +411,12 @@ normalize_ipv6() {
 }
 
 # True for canonical IPv6 addresses in global unicast space (2000::/3), less
-# the documentation prefix. Anything else (link-local, unique-local,
-# multicast, mapped IPv4) means the lookup went wrong.
+# the documentation prefixes 2001:db8::/32 and 3fff::/20. Anything else
+# (link-local, unique-local, multicast, mapped IPv4) means the lookup went
+# wrong.
 is_public_ipv6() {
     case $1 in
-        2001:db8:*) return 1 ;;
+        2001:db8:* | 3fff::* | 3fff:[0-9a-f]:* | 3fff:[0-9a-f][0-9a-f]:* | 3fff:[0-9a-f][0-9a-f][0-9a-f]:*) return 1 ;;
         [23][0-9a-f][0-9a-f][0-9a-f]:*) return 0 ;;
     esac
     return 1
@@ -448,7 +454,9 @@ detect_ip() {
         [ -n "$url" ] || continue
         : >"$NFA_TMP/lookup"
         # -g: URLs are literal; curl would otherwise read [..] and {..} as ranges.
-        curl "-$family" -fsSg --connect-timeout 5 --max-time 10 -A "$USER_AGENT" \
+        # An address fits in a few hundred bytes; the cap stops a hostile
+        # source from filling /tmp.
+        curl "-$family" -fsSg --connect-timeout 5 --max-time 10 --max-filesize 4096 -A "$USER_AGENT" \
             -o "$NFA_TMP/lookup" "$url" 2>"$NFA_TMP/error" &
         if ! wait_child "$!"; then
             log debug "IPv$family lookup via $url failed: $(first_line "$NFA_TMP/error")"
