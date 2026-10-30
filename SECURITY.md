@@ -4,9 +4,10 @@
 
 Fixes are made on the latest release only.
 
-| Version | Supported |
-| ------- | --------- |
-| 1.x     | Yes       |
+| Version        | Supported |
+| -------------- | --------- |
+| Latest release | Yes       |
+| Older releases | No        |
 
 ## Reporting a vulnerability
 

@@ -11,8 +11,8 @@ body:
     id: version
     attributes:
       label: Image version
-      description: The image tag or digest you run, and the version from the first log line ("No Fixed Address 1.0.0 starting").
-      placeholder: ghcr.io/mdr6273/nofixedaddress:1.0.0
+      description: The image tag or digest you run, and the version from the first log line ("No Fixed Address 0.0.1 starting").
+      placeholder: ghcr.io/mdr6273/nofixedaddress:0.0.1
     validations:
       required: true
   - type: dropdown
