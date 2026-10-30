@@ -1,7 +1,7 @@
 #!/bin/sh
 # End-to-end tests against tests/mock_cf_api.py: startup, a dry run, real
-# updates, a record deleted behind the updater's back, lookup and API
-# failures, fatal configuration problems, and prompt shutdown.
+# updates, a record deleted behind the updater's back, turning the proxy on,
+# lookup and API failures, fatal configuration problems, and prompt shutdown.
 #
 #   sh tests/e2e.sh                               # runs src/nofixedaddress.sh
 #   NFA_IMAGE=nofixedaddress:dev sh tests/e2e.sh  # runs a built image instead
@@ -265,6 +265,18 @@ check "recreates a record deleted behind its back" wait_for 30 log_has 'home.exa
 check "leaves current records alone" wait_for 30 log_has 'home.example.com A 9.9.9.9 unchanged'
 check "writes only when something changed" mock_has 'writes 4'
 check "reports healthy" nfa_health
+check_prompt_stop
+show_log failures "$before"
+
+echo
+echo "Proxy status"
+before=$failed
+# home already has the current address, so only its proxy status differs.
+nfa_start CF_RECORDS=home.example.com PROXIED=true INTERVAL=2
+check "turns the proxy on" wait_for 30 log_has 'home.example.com A proxied false -> true'
+check "the API has the record proxied" mock_has 'A home.example.com 9.9.9.9 proxied=true '
+check "leaves it alone afterwards" wait_for 30 log_has 'home.example.com A 9.9.9.9 unchanged'
+check "writes only once" mock_has 'writes 5'
 check_prompt_stop
 show_log failures "$before"
 
