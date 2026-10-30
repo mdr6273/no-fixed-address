@@ -1,0 +1,3 @@
+# Only the script goes into the image.
+*
+!src/

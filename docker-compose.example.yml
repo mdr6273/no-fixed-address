@@ -1,0 +1,46 @@
+# Copy to docker-compose.yml, fill in your zone and records, put the API token
+# in a .env file next to it (CF_API_TOKEN=...), then run: docker compose up -d
+services:
+  nofixedaddress:
+    image: ghcr.io/mdr6273/nofixedaddress:1
+    container_name: nofixedaddress
+    restart: unless-stopped
+    environment:
+      CF_API_TOKEN: ${CF_API_TOKEN}
+      CF_ZONE: example.com
+      CF_RECORDS: home.example.com,vpn.example.com
+      TZ: America/Chicago
+      # Everything below is optional; these are the defaults.
+      # INTERVAL: "86400"          # seconds between checks
+      # IPV4: "true"
+      # IPV6: "false"              # needs IPv6 inside the container; see the README
+      # PROXIED: ""                # blank keeps each record's current setting
+      # TTL: ""                    # blank keeps each record's current TTL; 1 = automatic
+      # CREATE_IF_MISSING: "false"
+      # DRY_RUN: "false"           # log what would change without changing it
+      # LOG_LEVEL: info            # debug, info, warn or error
+    # The container needs no privileges and only writes to /tmp.
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+# To keep the token out of `docker inspect`, use a secret instead: replace the
+# CF_API_TOKEN line above with
+#
+#       CF_API_TOKEN_FILE: /run/secrets/cf_api_token
+#
+# add this to the service
+#
+#     secrets:
+#       - cf_api_token
+#
+# and this at the top level. The file must be readable by uid 10001, for
+# example with chmod 0444.
+#
+# secrets:
+#   cf_api_token:
+#     file: ./cf_api_token.txt
