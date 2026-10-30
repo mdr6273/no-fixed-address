@@ -103,12 +103,14 @@ either way.
    ```
 
 2. On the **Docker** tab, select **Add Container**, and choose **NoFixedAddress** from the **Template** list (under user templates).
-3. Fill in **Cloudflare API token**, **Zone** and **Records**. For the first start, set **Dry run** to `true`.
+3. Fill in **Cloudflare API token**, **Zone** and **Records**. Records are full names, such as `home.example.com`, not just `home`. For the first start, set **Dry run** to `true`.
 4. Select **Apply**, then open the container's log from its icon on the Docker tab. It should show the token being verified and what it would change.
 5. When the log looks right, edit the container, set **Dry run** back to `false`, and apply.
 
 Notes for Unraid:
 
+- **Keep the token out of screenshots:** the window Unraid shows after **Apply** prints the whole `docker run` command, token included. Blank it out before sharing that window, for example when asking for help.
+- **Updates:** when a new version is published, the Docker tab shows an update for the container. Apply it from there, after reading the [changelog](CHANGELOG.md).
 - **Time zone:** Unraid passes your server's time zone to every container, so log timestamps already match it. The template has no `TZ` field on purpose, because a blank one would override that.
 - **IPv6:** the default bridge network has no IPv6. To update AAAA records, set **Network Type** to **Host**, or use a custom network with IPv6 enabled.
 - **Advanced settings:** TTL, log level, a token file and the lookup URLs are under **Show more settings**.
@@ -181,7 +183,7 @@ example with `chmod 0444 cf_api_token.txt`.
 | `CF_API_TOKEN` | *required* | The [scoped API token](#creating-the-cloudflare-api-token). |
 | `CF_API_TOKEN_FILE` | | Path to a file containing the token, such as a Docker secret. Use instead of `CF_API_TOKEN`, not as well. |
 | `CF_ZONE` | *required* | The zone the records belong to, such as `example.com`. |
-| `CF_RECORDS` | *required* | Comma-separated names to keep updated, such as `home.example.com,vpn.example.com`. Use `@` for the zone itself; wildcards such as `*.example.com` work too. |
+| `CF_RECORDS` | *required* | Comma-separated full names to keep updated, such as `home.example.com,vpn.example.com` (not just `home`). Use `@` for the zone itself; wildcards such as `*.example.com` work too. Often one name is enough: see [Pointing more names at it](#pointing-more-names-at-it). |
 | `INTERVAL` | `86400` | Seconds between checks. A check always runs at startup. |
 | `IPV4` | `true` | Keep A records pointed at the public IPv4 address. |
 | `IPV6` | `false` | Keep AAAA records pointed at the public IPv6 address. Needs [IPv6 inside the container](#could-not-determine-the-public-ipv6-address). |
@@ -204,6 +206,29 @@ These rarely need changing:
 | `IPV6_SOURCES` | `https://[2606:4700:4700::1111]/cdn-cgi/trace,https://api6.ipify.org` | The same, for IPv6. |
 | `STATE_DIR` | `/tmp/nofixedaddress` | Where the health check's timestamp is kept. |
 | `CF_API_URL` | `https://api.cloudflare.com/client/v4` | Only for testing against a stand-in for the API. |
+
+## Pointing more names at it
+
+The container only needs to manage one record. Point every other name at it
+with a CNAME, and they all follow it when your address changes:
+
+| Name | Type | Content |
+| --- | --- | --- |
+| `home.example.com` | A | Your public IP, kept current by No Fixed Address |
+| `nas.example.com` | CNAME | `home.example.com` |
+| `photos.example.com` | CNAME | `home.example.com` |
+
+`CF_RECORDS=home.example.com` then covers all of them, and adding a service
+never means changing the container's settings.
+
+Each name has its own proxy setting in Cloudflare (the orange or grey cloud),
+and a few rules decide which to use:
+
+- **A CNAME can be proxied even when its target isn't**, but not the other way round. A DNS-only CNAME pointing at a proxied record still resolves to Cloudflare's addresses. If any name needs to be DNS-only, keep the managed record DNS-only (`PROXIED=false`) and choose per CNAME.
+- **Keep anything that isn't a website DNS-only**, such as a VPN, game server or SSH. Cloudflare's proxy only carries HTTP and HTTPS.
+- **Large uploads and video usually need DNS-only.** On the Free and Pro plans the proxy rejects requests over 100 MB, and Cloudflare's terms restrict serving video through it, which matters for photo and media servers such as Immich, Jellyfin or Plex.
+- **Keep proxied names one level deep.** Cloudflare's free certificate covers `example.com` and names like `nas.example.com`, but not `nas.home.example.com`. DNS-only names can be any depth, because your own certificate (for example from Let's Encrypt on a reverse proxy) is the one browsers see.
+- **A DNS-only name shows your home IP** to anyone who looks it up. Proxied names don't, as long as nothing else gives the address away.
 
 ## Testing with DRY_RUN
 
@@ -260,6 +285,11 @@ The token is wrong, incomplete, revoked or expired. Copy it again, check it
 with the `curl` command in [Creating the Cloudflare API token](#creating-the-cloudflare-api-token),
 and make sure it's an API token rather than the Global API Key. The container
 exits with status 1, since retrying can't fix this.
+
+#### `CF_RECORDS entry 'home' is not in the zone example.com`
+
+Records are full names. Use `home.example.com`, not `home`. The container
+exits with status 2 until the setting is fixed.
 
 #### `zone example.com was not found`
 
