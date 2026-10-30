@@ -98,11 +98,11 @@ either way.
 1. Open a terminal on the server (the `>_` icon in the web UI) and download the template:
 
    ```sh
-   wget -O /boot/config/plugins/dockerMan/templates-user/my-NoFixedAddress.xml \
+   wget -O /boot/config/plugins/dockerMan/templates-user/my-No-Fixed-Address.xml \
      https://raw.githubusercontent.com/mdr6273/no-fixed-address/main/unraid/nofixedaddress.xml
    ```
 
-2. On the **Docker** tab, select **Add Container**, and choose **NoFixedAddress** from the **Template** list (under user templates).
+2. On the **Docker** tab, select **Add Container**, and choose **No-Fixed-Address** from the **Template** list (under user templates).
 3. Fill in **Cloudflare API token**, **Zone** and **Records**. Records are full names, such as `home.example.com`, not just `home`. For the first start, set **Dry run** to `true`.
 4. Select **Apply**, then open the container's log from its icon on the Docker tab. It should show the token being verified and what it would change.
 5. When the log looks right, edit the container, set **Dry run** back to `false`, and apply.
