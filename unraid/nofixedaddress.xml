@@ -5,8 +5,8 @@
     zone to every container, and a blank field would override it.
   -->
   <Name>NoFixedAddress</Name>
-  <Repository>ghcr.io/mdr6273/nofixedaddress:latest</Repository>
-  <Registry>https://github.com/mdr6273/no-fixed-address/pkgs/container/nofixedaddress</Registry>
+  <Repository>ghcr.io/mdr6273/no-fixed-address:latest</Repository>
+  <Registry>https://github.com/mdr6273/no-fixed-address/pkgs/container/no-fixed-address</Registry>
   <Network>bridge</Network>
   <MyIP/>
   <Shell>sh</Shell>
