@@ -55,7 +55,7 @@ else:
      -e CF_ZONE=example.com \
      -e CF_RECORDS=home.example.com \
      -e DRY_RUN=true \
-     ghcr.io/mdr6273/nofixedaddress:latest
+     ghcr.io/mdr6273/no-fixed-address:latest
    ```
 
    It logs what it would change, then waits for the next check. Press Ctrl+C to stop it.
@@ -128,7 +128,7 @@ docker run -d \
   -e CF_ZONE=example.com \
   -e CF_RECORDS=home.example.com,vpn.example.com \
   -e TZ=America/Chicago \
-  ghcr.io/mdr6273/nofixedaddress:latest
+  ghcr.io/mdr6273/no-fixed-address:latest
 ```
 
 The `--read-only`, `--tmpfs`, `--cap-drop` and `--security-opt` lines are
@@ -148,7 +148,7 @@ file, including a read-only, unprivileged container. The short version:
 ```yaml
 services:
   nofixedaddress:
-    image: ghcr.io/mdr6273/nofixedaddress:latest
+    image: ghcr.io/mdr6273/no-fixed-address:latest
     restart: unless-stopped
     environment:
       CF_API_TOKEN: ${CF_API_TOKEN}   # from a .env file next to the compose file
@@ -166,7 +166,7 @@ example with a Compose secret:
 ```yaml
 services:
   nofixedaddress:
-    image: ghcr.io/mdr6273/nofixedaddress:latest
+    image: ghcr.io/mdr6273/no-fixed-address:latest
     restart: unless-stopped
     environment:
       CF_API_TOKEN_FILE: /run/secrets/cf_api_token
@@ -197,7 +197,7 @@ container's configuration, not inside the image.
 
 - **Unraid:** when a new version is published, the Docker tab shows **update ready** next to the container (**Check for Updates** looks right away). Select it and apply the update.
 - **Docker Compose:** in the folder with your compose file, run `docker compose pull`, then `docker compose up -d`.
-- **docker run:** run `docker pull ghcr.io/mdr6273/nofixedaddress:latest`, remove the container with `docker rm -f nofixedaddress`, and start it again with the same `docker run` command. A running container keeps using the image it started with.
+- **docker run:** run `docker pull ghcr.io/mdr6273/no-fixed-address:latest`, remove the container with `docker rm -f nofixedaddress`, and start it again with the same `docker run` command. A running container keeps using the image it started with.
 
 These steps assume the `latest` tag. If you pinned an exact version such as
 `0.0.1`, change the tag to the new version instead. A pinned tag never changes,

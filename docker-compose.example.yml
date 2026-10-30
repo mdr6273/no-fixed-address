@@ -2,7 +2,7 @@
 # in a .env file next to it (CF_API_TOKEN=...), then run: docker compose up -d
 services:
   nofixedaddress:
-    image: ghcr.io/mdr6273/nofixedaddress:latest
+    image: ghcr.io/mdr6273/no-fixed-address:latest
     container_name: nofixedaddress
     restart: unless-stopped
     environment:
