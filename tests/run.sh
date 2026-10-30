@@ -110,7 +110,7 @@ done
 
 for ip in 0.0.0.0 0.1.2.3 10.0.0.1 10.255.255.255 100.64.0.1 100.127.255.255 \
     127.0.0.1 169.254.1.1 172.16.0.1 172.31.255.255 192.0.0.1 192.0.2.1 \
-    192.168.1.1 198.18.0.1 198.19.255.255 198.51.100.7 203.0.113.9 224.0.0.1 \
+    192.88.99.1 192.168.1.1 198.18.0.1 198.19.255.255 198.51.100.7 203.0.113.9 224.0.0.1 \
     239.255.255.250 240.0.0.1 255.255.255.255; do
     expect_fail "non-public IPv4 $ip is rejected" is_public_ipv4 "$ip"
 done
@@ -143,11 +143,12 @@ for ip in '' 1:2:3:4:5:6:7 1:2:3:4:5:6:7:8:9 1:2:3:4:5:6:7:8:: 1::2::3 :::1 \
 done
 
 for ip in 2606:4700:4700::1111 2a00:1450:4001:82a::200e 2001:4860:4860::8888 \
-    3fff:1::1; do
+    3fff:1000::1 3ffe:1::1; do
     expect_ok "public IPv6 $ip is accepted" is_public_ipv6 "$ip"
 done
 
 for ip in :: ::1 fe80::1 febf::1 fc00::1 fd12:3456::1 ff02::1 2001:db8::1 \
+    3fff::1 3fff:1::1 3fff:ab::1 3fff:fff::1 \
     ::ffff:102:304 64:ff9b::102:304 100::1 200::1 1fff::1 4000::1; do
     expect_fail "non-public IPv6 $ip is rejected" is_public_ipv6 "$ip"
 done
@@ -298,6 +299,15 @@ for v in 0 2 59 86401 auto; do
 done
 config "$TOKEN" "$ZONE" "$RECS" PROXIED=true TTL=300 >/dev/null 2>&1
 expect_ok "TTL on proxied records is warned about" grep -q 'no effect' "$TMP/config.log"
+
+# Settings that are allowed but risky.
+config "$TOKEN" "$ZONE" "$RECS" >/dev/null 2>&1
+expect_fail "the default lookup URLs are not warned about" grep -q 'uses plain http' "$TMP/config.log"
+expect_fail "the default API URL is not warned about" grep -q 'token is sent there' "$TMP/config.log"
+config "$TOKEN" "$ZONE" "$RECS" IPV4_SOURCES=http://ip.example.com >/dev/null 2>&1
+expect_ok "a plain http lookup URL is warned about" grep -q 'uses plain http' "$TMP/config.log"
+config "$TOKEN" "$ZONE" "$RECS" CF_API_URL=https://api.example.com/client/v4 >/dev/null 2>&1
+expect_ok "a non-default API URL is warned about" grep -q 'token is sent there' "$TMP/config.log"
 
 # Booleans.
 families() {
