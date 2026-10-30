@@ -13,7 +13,7 @@
   <Privileged>false</Privileged>
   <Support>https://github.com/mdr6273/no-fixed-address/issues</Support>
   <Project>https://github.com/mdr6273/no-fixed-address</Project>
-  <Overview>Self-hosted dynamic DNS for Cloudflare DNS. Keeps A (and optionally AAAA) records pointed at your server's current public IP address, so names like home.example.com keep working after your ISP changes it. There is no third-party account to renew or confirm every month: all it needs is a Cloudflare API token limited to one zone. It checks at startup and then once a day by default, and only writes when something has changed. Set Dry run to true for the first start to see what it would change without changing anything.</Overview>
+  <Overview>Self-hosted dynamic DNS for Cloudflare DNS. Keeps A (and optionally AAAA) records pointed at your server's current public IP address, so names like home.example.com keep working after your ISP changes it. There is no third-party account to renew or confirm every month: all it needs is a Cloudflare API token limited to one zone. It checks at startup and then once a day by default, and only writes when something has changed. Set Dry run to true for the first start to see what it would change without changing anything. The project page has step-by-step setup instructions, including creating the token.</Overview>
   <Category>Network:DNS</Category>
   <WebUI/>
   <TemplateURL>https://raw.githubusercontent.com/mdr6273/no-fixed-address/main/unraid/nofixedaddress.xml</TemplateURL>
@@ -24,10 +24,10 @@
   <DateInstalled/>
   <DonateText/>
   <DonateLink/>
-  <Requires/>
+  <Requires>A domain whose DNS is hosted on Cloudflare, and a Cloudflare API token limited to that zone. The project page explains how to create the token.</Requires>
   <Config Name="Cloudflare API token" Target="CF_API_TOKEN" Default="" Mode="" Description="A Cloudflare API token with Zone / Zone / Read and Zone / DNS / Edit permissions, limited to your zone. Create it under My Profile, API Tokens in the Cloudflare dashboard. The README has step-by-step instructions." Type="Variable" Display="always" Required="true" Mask="true"/>
   <Config Name="Zone" Target="CF_ZONE" Default="" Mode="" Description="The domain the records belong to, as it appears in the Cloudflare dashboard, for example example.com." Type="Variable" Display="always" Required="true" Mask="false"/>
-  <Config Name="Records" Target="CF_RECORDS" Default="" Mode="" Description="Comma-separated names to keep updated, for example home.example.com,vpn.example.com. Use @ for the zone itself." Type="Variable" Display="always" Required="true" Mask="false"/>
+  <Config Name="Records" Target="CF_RECORDS" Default="" Mode="" Description="Comma-separated full names to keep updated, for example home.example.com,vpn.example.com (not just home). Use @ for the zone itself. One name is often enough: point your other names at it with CNAME records." Type="Variable" Display="always" Required="true" Mask="false"/>
   <Config Name="Check interval (seconds)" Target="INTERVAL" Default="86400" Mode="" Description="How often to check whether the public IP has changed. 86400 is once a day, 3600 is hourly. A check always runs when the container starts." Type="Variable" Display="always" Required="false" Mask="false">86400</Config>
   <Config Name="Update A records (IPv4)" Target="IPV4" Default="true|false" Mode="" Description="Keep A records pointed at the public IPv4 address." Type="Variable" Display="always" Required="false" Mask="false">true</Config>
   <Config Name="Update AAAA records (IPv6)" Target="IPV6" Default="false|true" Mode="" Description="Keep AAAA records pointed at the public IPv6 address. The container needs IPv6 connectivity for this: use Host networking or a custom network with IPv6 enabled." Type="Variable" Display="always" Required="false" Mask="false">false</Config>

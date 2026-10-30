@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<CommunityApplications>
+  <Profile>No Fixed Address is self-hosted dynamic DNS for Cloudflare: a small container that keeps your DNS records pointed at your server's current public IP address, with no third-party account to renew. This repository holds its source, image builds and Unraid template. For help or to report a problem, open an issue at https://github.com/mdr6273/no-fixed-address/issues.</Profile>
+  <Icon>https://raw.githubusercontent.com/mdr6273/no-fixed-address/main/unraid/nofixedaddress.png</Icon>
+  <WebPage>https://github.com/mdr6273/no-fixed-address</WebPage>
+</CommunityApplications>
