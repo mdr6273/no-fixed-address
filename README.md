@@ -55,7 +55,7 @@ else:
      -e CF_ZONE=example.com \
      -e CF_RECORDS=home.example.com \
      -e DRY_RUN=true \
-     ghcr.io/mdr6273/nofixedaddress:1
+     ghcr.io/mdr6273/nofixedaddress:latest
    ```
 
    It logs what it would change, then waits for the next check. Press Ctrl+C to stop it.
@@ -123,11 +123,13 @@ docker run -d \
   -e CF_ZONE=example.com \
   -e CF_RECORDS=home.example.com,vpn.example.com \
   -e TZ=America/Chicago \
-  ghcr.io/mdr6273/nofixedaddress:1
+  ghcr.io/mdr6273/nofixedaddress:latest
 ```
 
-The `1` tag follows the latest 1.x release; `latest` and exact versions such
-as `1.0.0` are also published.
+`latest` follows the newest release, and each release is also published under
+its exact version, such as `0.0.1`. Until 1.0.0, any release may change
+behaviour, so pin an exact version if you'd rather upgrade on your own
+schedule, and read the [changelog](CHANGELOG.md) before moving to a new one.
 
 ## Docker Compose
 
@@ -137,7 +139,7 @@ file, including a read-only, unprivileged container. The short version:
 ```yaml
 services:
   nofixedaddress:
-    image: ghcr.io/mdr6273/nofixedaddress:1
+    image: ghcr.io/mdr6273/nofixedaddress:latest
     restart: unless-stopped
     environment:
       CF_API_TOKEN: ${CF_API_TOKEN}   # from a .env file next to the compose file
@@ -155,7 +157,7 @@ example with a Compose secret:
 ```yaml
 services:
   nofixedaddress:
-    image: ghcr.io/mdr6273/nofixedaddress:1
+    image: ghcr.io/mdr6273/nofixedaddress:latest
     restart: unless-stopped
     environment:
       CF_API_TOKEN_FILE: /run/secrets/cf_api_token
@@ -210,7 +212,7 @@ zone and records, detecting the address) but never writes to Cloudflare.
 Changes it would have made are logged with a `[dry-run]` prefix:
 
 ```text
-2026-10-29T23:23:52-0500 info  No Fixed Address 1.0.0 starting
+2026-10-29T23:23:52-0500 info  No Fixed Address 0.0.1 starting
 2026-10-29T23:23:53-0500 info  zone example.com: keeping A records for home.example.com, vpn.example.com pointed at this host
 2026-10-29T23:23:53-0500 info  checking every 86400s; proxied: as is, ttl: as is, create missing records: true
 2026-10-29T23:23:53-0500 info  dry run: changes are logged but not applied

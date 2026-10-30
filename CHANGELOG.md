@@ -6,7 +6,7 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-## [1.0.0] - 2026-10-29
+## [0.0.1] - 2026-10-30
 
 ### Added
 
@@ -20,5 +20,5 @@ All notable changes to this project are documented here. The format follows
 - Multi-architecture image (linux/amd64, linux/arm64) on GitHub Container Registry, running as a non-root user.
 - Unraid template and icon.
 
-[Unreleased]: https://github.com/mdr6273/no-fixed-address/compare/v1.0.0...HEAD
-[1.0.0]: https://github.com/mdr6273/no-fixed-address/releases/tag/v1.0.0
+[Unreleased]: https://github.com/mdr6273/no-fixed-address/compare/v0.0.1...HEAD
+[0.0.1]: https://github.com/mdr6273/no-fixed-address/releases/tag/v0.0.1
