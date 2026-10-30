@@ -1,0 +1,62 @@
+name: Bug report
+description: Something does not work as the README describes.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this. Before you paste anything,
+        remove your API token and anything else you would rather keep private.
+  - type: input
+    id: version
+    attributes:
+      label: Image version
+      description: The image tag or digest you run, and the version from the first log line ("No Fixed Address 1.0.0 starting").
+      placeholder: ghcr.io/mdr6273/nofixedaddress:1.0.0
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Unraid
+        - Docker Compose
+        - docker run
+        - Other (please describe below)
+    validations:
+      required: true
+  - type: dropdown
+    id: arch
+    attributes:
+      label: CPU architecture
+      options:
+        - amd64 (x86_64)
+        - arm64 (aarch64)
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected to happen instead.
+    validations:
+      required: true
+  - type: textarea
+    id: settings
+    attributes:
+      label: Settings
+      description: The environment variables you set, with CF_API_TOKEN removed.
+      render: text
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: >-
+        Restart the container with LOG_LEVEL=debug and paste the output from
+        startup through the first check. The token is never logged, but check
+        for anything else you would rather not share.
+      render: text
+    validations:
+      required: true
