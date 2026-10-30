@@ -1,6 +1,7 @@
 # Local settings and secrets
 .env
 *.token
+cf_api_token.txt
 secrets/
 
 # Python bytecode from the test mock

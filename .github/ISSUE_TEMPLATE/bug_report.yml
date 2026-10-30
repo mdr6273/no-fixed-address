@@ -11,8 +11,8 @@ body:
     id: version
     attributes:
       label: Image version
-      description: The image tag or digest you run, and the version from the first log line ("No Fixed Address 1.0.0 starting").
-      placeholder: ghcr.io/mdr6273/nofixedaddress:1.0.0
+      description: The image tag or digest you run, and the version from the first log line ("No Fixed Address 0.0.1 starting").
+      placeholder: ghcr.io/mdr6273/no-fixed-address:0.0.1
     validations:
       required: true
   - type: dropdown
@@ -55,8 +55,10 @@ body:
       label: Logs
       description: >-
         Restart the container with LOG_LEVEL=debug and paste the output from
-        startup through the first check. The token is never logged, but check
-        for anything else you would rather not share.
+        startup through the first check. The token is never logged, but the
+        log does show your public IP address and record names. Replace them
+        with placeholders if you'd rather not share them, especially if your
+        records are proxied to keep that address private.
       render: text
     validations:
       required: true
