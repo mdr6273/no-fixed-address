@@ -175,7 +175,7 @@ url_list_setting() {
 # Reads and validates every setting, reporting all problems before giving up
 # so they can be fixed in one pass. Returns 2 if anything is wrong.
 load_config() {
-    local raw name entries
+    local raw name entries old
     CONFIG_ERRORS=0
 
     LOG_LEVEL=${LOG_LEVEL:-}
@@ -219,36 +219,44 @@ load_config() {
             ;;
     esac
 
-    CF_ZONE=${CF_ZONE:-}
-    trim_var CF_ZONE
-    CF_ZONE=$(lower "$CF_ZONE")
-    CF_ZONE=${CF_ZONE%.}
-    if [ -z "$CF_ZONE" ]; then
-        config_error "CF_ZONE is required, e.g. CF_ZONE=example.com"
-    elif ! is_hostname "$CF_ZONE" || [ "${CF_ZONE#\*}" != "$CF_ZONE" ] || [ "${CF_ZONE#*.}" = "$CF_ZONE" ]; then
-        config_error "CF_ZONE '$CF_ZONE' is not a domain name like example.com"
-        CF_ZONE=''
+    # Renamed in 0.0.3. Stopping with the new name beats "ZONE is required"
+    # for a container that was set up before the rename.
+    for old in CF_ZONE CF_RECORDS; do
+        eval "raw=\${$old:-}"
+        trim_var raw
+        [ -z "$raw" ] || config_error "$old is now called ${old#CF_}: rename the setting and start the container again"
+    done
+
+    ZONE=${ZONE:-}
+    trim_var ZONE
+    ZONE=$(lower "$ZONE")
+    ZONE=${ZONE%.}
+    if [ -z "$ZONE" ]; then
+        config_error "ZONE is required, e.g. ZONE=example.com"
+    elif ! is_hostname "$ZONE" || [ "${ZONE#\*}" != "$ZONE" ] || [ "${ZONE#*.}" = "$ZONE" ]; then
+        config_error "ZONE '$ZONE' is not a domain name like example.com"
+        ZONE=''
     fi
 
-    RECORDS=''
-    entries=$(printf '%s\n' "${CF_RECORDS:-}" | tr ',' '\n' | awk '
+    RECORD_NAMES=''
+    entries=$(printf '%s\n' "${RECORDS:-}" | tr ',' '\n' | awk '
         { gsub(/^[ \t\r]+|[ \t\r]+$/, ""); $0 = tolower($0); sub(/\.$/, "") }
         $0 != ""
     ')
     for name in $entries; do
-        [ "$name" != @ ] || name=$CF_ZONE
+        [ "$name" != @ ] || name=$ZONE
         if ! is_hostname "$name"; then
-            config_error "CF_RECORDS entry '$name' is not a valid DNS name"
-        elif [ -n "$CF_ZONE" ] && [ "$name" != "$CF_ZONE" ] && [ "${name%".$CF_ZONE"}" = "$name" ]; then
-            config_error "CF_RECORDS entry '$name' is not in the zone $CF_ZONE"
+            config_error "RECORDS entry '$name' is not a valid DNS name"
+        elif [ -n "$ZONE" ] && [ "$name" != "$ZONE" ] && [ "${name%".$ZONE"}" = "$name" ]; then
+            config_error "RECORDS entry '$name' is not in the zone $ZONE"
         else
-            case " $RECORDS " in
+            case " $RECORD_NAMES " in
                 *" $name "*) ;;
-                *) RECORDS="$RECORDS${RECORDS:+ }$name" ;;
+                *) RECORD_NAMES="$RECORD_NAMES${RECORD_NAMES:+ }$name" ;;
             esac
         fi
     done
-    [ -n "$entries" ] || config_error "CF_RECORDS is required, e.g. CF_RECORDS=home.example.com,vpn.example.com"
+    [ -n "$entries" ] || config_error "RECORDS is required, e.g. RECORDS=home.example.com,vpn.example.com"
 
     raw=${INTERVAL:-}
     trim_var raw
@@ -306,7 +314,7 @@ describe_config() {
     local types=''
     [ "$IPV4" = false ] || types=A
     [ "$IPV6" = false ] || types="${types:+$types and }AAAA"
-    log info "zone $CF_ZONE: keeping $types records for $(printf '%s' "$RECORDS" | sed 's/ /, /g') pointed at this host"
+    log info "zone $ZONE: keeping $types records for $(printf '%s' "$RECORD_NAMES" | sed 's/ /, /g') pointed at this host"
     log info "checking every ${INTERVAL}s; proxied: ${PROXIED:-as is}, ttl: ${TTL:-as is}, create missing records: $CREATE_IF_MISSING"
     [ "$DRY_RUN" = false ] || log info "dry run: changes are logged but not applied"
 }
@@ -568,7 +576,7 @@ EOF
 report_api_failure() {
     local hint=''
     case $HTTP_STATUS in
-        401 | 403) hint="; the token needs Zone:DNS:Edit and Zone:Zone:Read on $CF_ZONE" ;;
+        401 | 403) hint="; the token needs Zone:DNS:Edit and Zone:Zone:Read on $ZONE" ;;
     esac
     if [ "$2" -eq 1 ]; then
         log warn "$1 failed: $API_ERROR"
@@ -606,7 +614,7 @@ verify_token() {
 
 verify_account_token() {
     local rc account
-    cf_api GET "/zones?name=$CF_ZONE"
+    cf_api GET "/zones?name=$ZONE"
     rc=$?
     case $rc in
         0) ;;
@@ -619,12 +627,12 @@ verify_account_token() {
             return 2
             ;;
     esac
-    account=$(jq -r --arg zone "$CF_ZONE" \
+    account=$(jq -r --arg zone "$ZONE" \
         '[.result[]? | select(.name == $zone) | .account.id] | if length == 1 then .[0] // empty else empty end' \
         "$NFA_TMP/body" 2>/dev/null)
     case $account in
         '' | *[!0-9A-Za-z]*)
-            log error "Cloudflare rejected the API token, or it cannot see zone $CF_ZONE; check the token and that it has Zone:Zone:Read for this zone"
+            log error "Cloudflare rejected the API token, or it cannot see zone $ZONE; check the token and that it has Zone:Zone:Read for this zone"
             return 2
             ;;
     esac
@@ -659,34 +667,34 @@ report_rejected_token() {
     log error "Cloudflare rejected the API token ($API_ERROR); check that it was copied completely and has not been deleted or expired"
 }
 
-# Looks up the zone ID for CF_ZONE. Returns 0 on success, 1 if Cloudflare
+# Looks up the zone ID for ZONE. Returns 0 on success, 1 if Cloudflare
 # could not be reached, and 2 if the zone is not visible to the token.
 resolve_zone() {
     local rc id
-    cf_api GET "/zones?name=$CF_ZONE"
+    cf_api GET "/zones?name=$ZONE"
     rc=$?
     case $rc in
         0) ;;
         1)
-            log warn "could not look up zone $CF_ZONE: $API_ERROR"
+            log warn "could not look up zone $ZONE: $API_ERROR"
             return 1
             ;;
         *)
-            log error "looking up zone $CF_ZONE failed ($API_ERROR); the token needs Zone:Zone:Read on it"
+            log error "looking up zone $ZONE failed ($API_ERROR); the token needs Zone:Zone:Read on it"
             return 2
             ;;
     esac
-    id=$(jq -r --arg zone "$CF_ZONE" \
+    id=$(jq -r --arg zone "$ZONE" \
         '[.result[]? | select(.name == $zone) | .id] | if length == 1 then .[0] else empty end' \
         "$NFA_TMP/body" 2>/dev/null)
     case $id in
         '' | *[!0-9A-Za-z]*)
-            log error "zone $CF_ZONE was not found; check CF_ZONE, and that the token has Zone:Zone:Read for this zone"
+            log error "zone $ZONE was not found; check ZONE, and that the token has Zone:Zone:Read for this zone"
             return 2
             ;;
     esac
     ZONE_ID=$id
-    log debug "zone $CF_ZONE has ID $ZONE_ID"
+    log debug "zone $ZONE has ID $ZONE_ID"
 }
 
 # --- records ----------------------------------------------------------------
@@ -932,7 +940,7 @@ run_check() {
         fi
     fi
 
-    for name in $RECORDS; do
+    for name in $RECORD_NAMES; do
         [ -n "$ZONE_ID" ] || break
         if [ -n "$addr4" ]; then
             sync_record A "$name" "$addr4"

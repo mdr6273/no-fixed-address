@@ -69,7 +69,7 @@ expect_fail() {
 # when it fails, otherwise COMMAND's. Log output lands in $TMP/config.log.
 config() {
     (
-        unset CF_API_TOKEN CF_API_TOKEN_FILE CF_ZONE CF_RECORDS INTERVAL IPV4 \
+        unset CF_API_TOKEN CF_API_TOKEN_FILE CF_ZONE CF_RECORDS ZONE RECORDS INTERVAL IPV4 \
             IPV6 PROXIED TTL CREATE_IF_MISSING DRY_RUN LOG_LEVEL IPV4_SOURCES \
             IPV6_SOURCES CF_API_URL STATE_DIR
         while [ "$#" -gt 0 ] && [ "$1" != -- ]; do
@@ -87,8 +87,8 @@ show() {
 }
 
 TOKEN=CF_API_TOKEN=Abc123_-.~+/=token
-ZONE=CF_ZONE=example.com
-RECS=CF_RECORDS=home.example.com
+ZONE_ARG=ZONE=example.com
+RECS=RECORDS=home.example.com
 
 # --- IPv4 -------------------------------------------------------------------
 
@@ -211,43 +211,43 @@ expect_eq "trim_var strips tabs and line endings" x "$value"
 
 # --- configuration ----------------------------------------------------------
 
-expect_ok "minimal config loads" config "$TOKEN" "$ZONE" "$RECS"
-expect_eq "default INTERVAL" 86400 "$(config "$TOKEN" "$ZONE" "$RECS" -- show INTERVAL)"
-expect_eq "default IPV4" true "$(config "$TOKEN" "$ZONE" "$RECS" -- show IPV4)"
-expect_eq "default IPV6" false "$(config "$TOKEN" "$ZONE" "$RECS" -- show IPV6)"
-expect_eq "default PROXIED preserves" '' "$(config "$TOKEN" "$ZONE" "$RECS" -- show PROXIED)"
-expect_eq "default TTL preserves" '' "$(config "$TOKEN" "$ZONE" "$RECS" -- show TTL)"
-expect_eq "default CREATE_IF_MISSING" false "$(config "$TOKEN" "$ZONE" "$RECS" -- show CREATE_IF_MISSING)"
-expect_eq "default DRY_RUN" false "$(config "$TOKEN" "$ZONE" "$RECS" -- show DRY_RUN)"
-expect_eq "default log threshold" 20 "$(config "$TOKEN" "$ZONE" "$RECS" -- show LOG_THRESHOLD)"
+expect_ok "minimal config loads" config "$TOKEN" "$ZONE_ARG" "$RECS"
+expect_eq "default INTERVAL" 86400 "$(config "$TOKEN" "$ZONE_ARG" "$RECS" -- show INTERVAL)"
+expect_eq "default IPV4" true "$(config "$TOKEN" "$ZONE_ARG" "$RECS" -- show IPV4)"
+expect_eq "default IPV6" false "$(config "$TOKEN" "$ZONE_ARG" "$RECS" -- show IPV6)"
+expect_eq "default PROXIED preserves" '' "$(config "$TOKEN" "$ZONE_ARG" "$RECS" -- show PROXIED)"
+expect_eq "default TTL preserves" '' "$(config "$TOKEN" "$ZONE_ARG" "$RECS" -- show TTL)"
+expect_eq "default CREATE_IF_MISSING" false "$(config "$TOKEN" "$ZONE_ARG" "$RECS" -- show CREATE_IF_MISSING)"
+expect_eq "default DRY_RUN" false "$(config "$TOKEN" "$ZONE_ARG" "$RECS" -- show DRY_RUN)"
+expect_eq "default log threshold" 20 "$(config "$TOKEN" "$ZONE_ARG" "$RECS" -- show LOG_THRESHOLD)"
 expect_eq "default API URL" https://api.cloudflare.com/client/v4 \
-    "$(config "$TOKEN" "$ZONE" "$RECS" -- show CF_API_URL)"
-expect_eq "default state dir" /tmp/nofixedaddress "$(config "$TOKEN" "$ZONE" "$RECS" -- show STATE_DIR)"
+    "$(config "$TOKEN" "$ZONE_ARG" "$RECS" -- show CF_API_URL)"
+expect_eq "default state dir" /tmp/nofixedaddress "$(config "$TOKEN" "$ZONE_ARG" "$RECS" -- show STATE_DIR)"
 expect_eq "default IPv4 sources" "$DEFAULT_IPV4_SOURCES" \
-    "$(config "$TOKEN" "$ZONE" "$RECS" -- show IPV4_SOURCES)"
+    "$(config "$TOKEN" "$ZONE_ARG" "$RECS" -- show IPV4_SOURCES)"
 expect_eq "default IPv6 sources" "$DEFAULT_IPV6_SOURCES" \
-    "$(config "$TOKEN" "$ZONE" "$RECS" -- show IPV6_SOURCES)"
+    "$(config "$TOKEN" "$ZONE_ARG" "$RECS" -- show IPV6_SOURCES)"
 
 # Unraid passes every template field, blank or not.
 blank_check() {
     printf '%s %s %s %s %s' "$INTERVAL" "$IPV4" "$IPV6" "$PROXIED" "$TTL"
 }
 expect_eq "blank settings fall back to defaults" '86400 true false  ' \
-    "$(config "$TOKEN" "$ZONE" "$RECS" INTERVAL= IPV4= IPV6= PROXIED= TTL= \
+    "$(config "$TOKEN" "$ZONE_ARG" "$RECS" INTERVAL= IPV4= IPV6= PROXIED= TTL= \
         CF_API_TOKEN_FILE= LOG_LEVEL= IPV4_SOURCES= CF_API_URL= STATE_DIR= -- blank_check)"
 
 # Token handling.
-expect_eq "token is trimmed" abc "$(config 'CF_API_TOKEN=  abc  ' "$ZONE" "$RECS" -- show NFA_TOKEN)"
+expect_eq "token is trimmed" abc "$(config 'CF_API_TOKEN=  abc  ' "$ZONE_ARG" "$RECS" -- show NFA_TOKEN)"
 child_sees() {
     sh -c 'printf "%s/%s" "${CF_API_TOKEN:-unset}" "${NFA_TOKEN:-unset}"'
 }
 expect_eq "token is not passed to child processes" unset/unset \
-    "$(config "$TOKEN" "$ZONE" "$RECS" -- child_sees)"
-expect_fail "missing token is an error" config "$ZONE" "$RECS"
-expect_fail "whitespace-only token is an error" config 'CF_API_TOKEN=   ' "$ZONE" "$RECS"
-expect_fail 'token with a quote is rejected' config 'CF_API_TOKEN=abc"def' "$ZONE" "$RECS"
-expect_fail 'token with inner space is rejected' config 'CF_API_TOKEN=abc def' "$ZONE" "$RECS"
-config 'CF_API_TOKEN=secret"value' "$ZONE" "$RECS" >/dev/null 2>&1
+    "$(config "$TOKEN" "$ZONE_ARG" "$RECS" -- child_sees)"
+expect_fail "missing token is an error" config "$ZONE_ARG" "$RECS"
+expect_fail "whitespace-only token is an error" config 'CF_API_TOKEN=   ' "$ZONE_ARG" "$RECS"
+expect_fail 'token with a quote is rejected' config 'CF_API_TOKEN=abc"def' "$ZONE_ARG" "$RECS"
+expect_fail 'token with inner space is rejected' config 'CF_API_TOKEN=abc def' "$ZONE_ARG" "$RECS"
+config 'CF_API_TOKEN=secret"value' "$ZONE_ARG" "$RECS" >/dev/null 2>&1
 expect_fail "a rejected token is not echoed in the log" grep -q secret "$TMP/config.log"
 
 printf 'filetoken' >"$TMP/token-no-newline"
@@ -256,57 +256,65 @@ printf '  filetoken  \nsecond line\n' >"$TMP/token-padded"
 : >"$TMP/token-empty"
 for f in token-no-newline token-crlf token-padded; do
     expect_eq "token file $f" filetoken \
-        "$(config "CF_API_TOKEN_FILE=$TMP/$f" "$ZONE" "$RECS" -- show NFA_TOKEN)"
+        "$(config "CF_API_TOKEN_FILE=$TMP/$f" "$ZONE_ARG" "$RECS" -- show NFA_TOKEN)"
 done
-expect_fail "empty token file is an error" config "CF_API_TOKEN_FILE=$TMP/token-empty" "$ZONE" "$RECS"
-expect_fail "missing token file is an error" config "CF_API_TOKEN_FILE=$TMP/nope" "$ZONE" "$RECS"
+expect_fail "empty token file is an error" config "CF_API_TOKEN_FILE=$TMP/token-empty" "$ZONE_ARG" "$RECS"
+expect_fail "missing token file is an error" config "CF_API_TOKEN_FILE=$TMP/nope" "$ZONE_ARG" "$RECS"
 expect_fail "token and token file together are an error" \
-    config "$TOKEN" "CF_API_TOKEN_FILE=$TMP/token-crlf" "$ZONE" "$RECS"
+    config "$TOKEN" "CF_API_TOKEN_FILE=$TMP/token-crlf" "$ZONE_ARG" "$RECS"
 
 # Zone and records.
 expect_eq "zone is lowercased and loses its trailing dot" example.com \
-    "$(config "$TOKEN" 'CF_ZONE= Example.COM. ' "$RECS" -- show CF_ZONE)"
+    "$(config "$TOKEN" 'ZONE= Example.COM. ' "$RECS" -- show ZONE)"
 expect_fail "missing zone is an error" config "$TOKEN" "$RECS"
-expect_fail "single-label zone is an error" config "$TOKEN" CF_ZONE=localhost CF_RECORDS=localhost
-expect_fail "wildcard zone is an error" config "$TOKEN" 'CF_ZONE=*.example.com' "$RECS"
+expect_fail "single-label zone is an error" config "$TOKEN" ZONE=localhost RECORDS=localhost
+expect_fail "wildcard zone is an error" config "$TOKEN" 'ZONE=*.example.com' "$RECS"
 expect_eq "records are trimmed, lowercased and de-duplicated" \
     'home.example.com vpn.example.com example.com *.lan.example.com' \
-    "$(config "$TOKEN" "$ZONE" \
-        'CF_RECORDS= Home.Example.com , vpn.example.com,,home.example.com. ,@,example.com,*.lan.example.com' \
-        -- show RECORDS)"
-expect_fail "missing records are an error" config "$TOKEN" "$ZONE"
-expect_fail "blank records are an error" config "$TOKEN" "$ZONE" 'CF_RECORDS= , '
-expect_fail "record in another zone is an error" config "$TOKEN" "$ZONE" CF_RECORDS=home.example.org
+    "$(config "$TOKEN" "$ZONE_ARG" \
+        'RECORDS= Home.Example.com , vpn.example.com,,home.example.com. ,@,example.com,*.lan.example.com' \
+        -- show RECORD_NAMES)"
+expect_fail "missing records are an error" config "$TOKEN" "$ZONE_ARG"
+expect_fail "blank records are an error" config "$TOKEN" "$ZONE_ARG" 'RECORDS= , '
+expect_fail "record in another zone is an error" config "$TOKEN" "$ZONE_ARG" RECORDS=home.example.org
 expect_fail "record that only ends with the zone name is an error" \
-    config "$TOKEN" "$ZONE" CF_RECORDS=notexample.com
-expect_fail "record that is a URL is an error" config "$TOKEN" "$ZONE" CF_RECORDS=https://home.example.com
+    config "$TOKEN" "$ZONE_ARG" RECORDS=notexample.com
+expect_fail "record that is a URL is an error" config "$TOKEN" "$ZONE_ARG" RECORDS=https://home.example.com
+
+# The names used before 0.0.3.
+expect_fail "old CF_ZONE name is an error" config "$TOKEN" "$ZONE_ARG" "$RECS" CF_ZONE=example.com
+expect_fail "old CF_RECORDS name is an error" config "$TOKEN" "$ZONE_ARG" "$RECS" CF_RECORDS=home.example.com
+config "$TOKEN" CF_ZONE=example.com CF_RECORDS=home.example.com >/dev/null 2>&1
+expect_eq "old names are reported with their new names" 2 \
+    "$(grep -cE 'CF_ZONE is now called ZONE|CF_RECORDS is now called RECORDS' "$TMP/config.log")"
+expect_ok "blank old names are ignored" config "$TOKEN" "$ZONE_ARG" "$RECS" CF_ZONE= 'CF_RECORDS= '
 
 # Numbers.
 expect_eq "INTERVAL with leading zero is decimal" 300 \
-    "$(config "$TOKEN" "$ZONE" "$RECS" INTERVAL=0300 -- show INTERVAL)"
-expect_eq "INTERVAL is trimmed" 600 "$(config "$TOKEN" "$ZONE" "$RECS" 'INTERVAL= 600 ' -- show INTERVAL)"
+    "$(config "$TOKEN" "$ZONE_ARG" "$RECS" INTERVAL=0300 -- show INTERVAL)"
+expect_eq "INTERVAL is trimmed" 600 "$(config "$TOKEN" "$ZONE_ARG" "$RECS" 'INTERVAL= 600 ' -- show INTERVAL)"
 for v in 0 -5 abc 1.5 1h; do
-    expect_fail "INTERVAL=$v is an error" config "$TOKEN" "$ZONE" "$RECS" "INTERVAL=$v"
+    expect_fail "INTERVAL=$v is an error" config "$TOKEN" "$ZONE_ARG" "$RECS" "INTERVAL=$v"
 done
-config "$TOKEN" "$ZONE" "$RECS" INTERVAL=30 >/dev/null 2>&1
+config "$TOKEN" "$ZONE_ARG" "$RECS" INTERVAL=30 >/dev/null 2>&1
 expect_ok "a very short INTERVAL is allowed but warned about" grep -q 'INTERVAL=30' "$TMP/config.log"
 
 for v in 1 60 300 86400; do
-    expect_eq "TTL=$v is accepted" "$v" "$(config "$TOKEN" "$ZONE" "$RECS" "TTL=$v" -- show TTL)"
+    expect_eq "TTL=$v is accepted" "$v" "$(config "$TOKEN" "$ZONE_ARG" "$RECS" "TTL=$v" -- show TTL)"
 done
 for v in 0 2 59 86401 auto; do
-    expect_fail "TTL=$v is an error" config "$TOKEN" "$ZONE" "$RECS" "TTL=$v"
+    expect_fail "TTL=$v is an error" config "$TOKEN" "$ZONE_ARG" "$RECS" "TTL=$v"
 done
-config "$TOKEN" "$ZONE" "$RECS" PROXIED=true TTL=300 >/dev/null 2>&1
+config "$TOKEN" "$ZONE_ARG" "$RECS" PROXIED=true TTL=300 >/dev/null 2>&1
 expect_ok "TTL on proxied records is warned about" grep -q 'no effect' "$TMP/config.log"
 
 # Settings that are allowed but risky.
-config "$TOKEN" "$ZONE" "$RECS" >/dev/null 2>&1
+config "$TOKEN" "$ZONE_ARG" "$RECS" >/dev/null 2>&1
 expect_fail "the default lookup URLs are not warned about" grep -q 'uses plain http' "$TMP/config.log"
 expect_fail "the default API URL is not warned about" grep -q 'token is sent there' "$TMP/config.log"
-config "$TOKEN" "$ZONE" "$RECS" IPV4_SOURCES=http://ip.example.com >/dev/null 2>&1
+config "$TOKEN" "$ZONE_ARG" "$RECS" IPV4_SOURCES=http://ip.example.com >/dev/null 2>&1
 expect_ok "a plain http lookup URL is warned about" grep -q 'uses plain http' "$TMP/config.log"
-config "$TOKEN" "$ZONE" "$RECS" CF_API_URL=https://api.example.com/client/v4 >/dev/null 2>&1
+config "$TOKEN" "$ZONE_ARG" "$RECS" CF_API_URL=https://api.example.com/client/v4 >/dev/null 2>&1
 expect_ok "a non-default API URL is warned about" grep -q 'token is sent there' "$TMP/config.log"
 
 # Booleans.
@@ -314,24 +322,24 @@ families() {
     printf '%s/%s' "$IPV4" "$IPV6"
 }
 expect_eq "IPV4/IPV6 accept yes/no" false/true \
-    "$(config "$TOKEN" "$ZONE" "$RECS" IPV4=no IPV6=Yes -- families)"
-expect_fail "IPV4 and IPV6 both off is an error" config "$TOKEN" "$ZONE" "$RECS" IPV4=false IPV6=false
-expect_fail "IPV6=maybe is an error" config "$TOKEN" "$ZONE" "$RECS" IPV6=maybe
-expect_eq "PROXIED=TRUE" true "$(config "$TOKEN" "$ZONE" "$RECS" PROXIED=TRUE -- show PROXIED)"
-expect_eq "DRY_RUN=1" true "$(config "$TOKEN" "$ZONE" "$RECS" DRY_RUN=1 -- show DRY_RUN)"
+    "$(config "$TOKEN" "$ZONE_ARG" "$RECS" IPV4=no IPV6=Yes -- families)"
+expect_fail "IPV4 and IPV6 both off is an error" config "$TOKEN" "$ZONE_ARG" "$RECS" IPV4=false IPV6=false
+expect_fail "IPV6=maybe is an error" config "$TOKEN" "$ZONE_ARG" "$RECS" IPV6=maybe
+expect_eq "PROXIED=TRUE" true "$(config "$TOKEN" "$ZONE_ARG" "$RECS" PROXIED=TRUE -- show PROXIED)"
+expect_eq "DRY_RUN=1" true "$(config "$TOKEN" "$ZONE_ARG" "$RECS" DRY_RUN=1 -- show DRY_RUN)"
 
 # Logging and endpoints.
-expect_eq "LOG_LEVEL=DEBUG" 10 "$(config "$TOKEN" "$ZONE" "$RECS" LOG_LEVEL=DEBUG -- show LOG_THRESHOLD)"
-expect_eq "LOG_LEVEL=warning" warn "$(config "$TOKEN" "$ZONE" "$RECS" LOG_LEVEL=warning -- show LOG_LEVEL)"
-expect_fail "LOG_LEVEL=verbose is an error" config "$TOKEN" "$ZONE" "$RECS" LOG_LEVEL=verbose
+expect_eq "LOG_LEVEL=DEBUG" 10 "$(config "$TOKEN" "$ZONE_ARG" "$RECS" LOG_LEVEL=DEBUG -- show LOG_THRESHOLD)"
+expect_eq "LOG_LEVEL=warning" warn "$(config "$TOKEN" "$ZONE_ARG" "$RECS" LOG_LEVEL=warning -- show LOG_LEVEL)"
+expect_fail "LOG_LEVEL=verbose is an error" config "$TOKEN" "$ZONE_ARG" "$RECS" LOG_LEVEL=verbose
 expect_eq "source lists lose whitespace" 'https://a.example/ip,http://b.example/ip' \
-    "$(config "$TOKEN" "$ZONE" "$RECS" 'IPV4_SOURCES= https://a.example/ip , http://b.example/ip ' -- show IPV4_SOURCES)"
-expect_fail "non-HTTP source is an error" config "$TOKEN" "$ZONE" "$RECS" IPV4_SOURCES=ftp://a.example/ip
+    "$(config "$TOKEN" "$ZONE_ARG" "$RECS" 'IPV4_SOURCES= https://a.example/ip , http://b.example/ip ' -- show IPV4_SOURCES)"
+expect_fail "non-HTTP source is an error" config "$TOKEN" "$ZONE_ARG" "$RECS" IPV4_SOURCES=ftp://a.example/ip
 expect_eq "API URL loses its trailing slash" http://127.0.0.1:8080/client/v4 \
-    "$(config "$TOKEN" "$ZONE" "$RECS" CF_API_URL=http://127.0.0.1:8080/client/v4/ -- show CF_API_URL)"
-expect_fail "API URL without a scheme is an error" config "$TOKEN" "$ZONE" "$RECS" CF_API_URL=api.cloudflare.com
+    "$(config "$TOKEN" "$ZONE_ARG" "$RECS" CF_API_URL=http://127.0.0.1:8080/client/v4/ -- show CF_API_URL)"
+expect_fail "API URL without a scheme is an error" config "$TOKEN" "$ZONE_ARG" "$RECS" CF_API_URL=api.cloudflare.com
 
-config CF_RECORDS=home.example.com INTERVAL=abc TTL=7 >/dev/null 2>&1
+config RECORDS=home.example.com INTERVAL=abc TTL=7 >/dev/null 2>&1
 expect_eq "every config problem is reported at once" 4 "$(grep -c 'config:' "$TMP/config.log")"
 
 # --- logging ----------------------------------------------------------------
