@@ -7,8 +7,8 @@ services:
     restart: unless-stopped
     environment:
       CF_API_TOKEN: ${CF_API_TOKEN}
-      CF_ZONE: example.com
-      CF_RECORDS: home.example.com,vpn.example.com
+      ZONE: example.com
+      RECORDS: home.example.com,vpn.example.com
       TZ: America/Chicago
       # Everything below is optional; these are the defaults.
       # INTERVAL: "86400"          # seconds between checks

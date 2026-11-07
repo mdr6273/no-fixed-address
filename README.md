@@ -52,8 +52,8 @@ else:
    ```sh
    docker run --rm \
      -e CF_API_TOKEN=your-token \
-     -e CF_ZONE=example.com \
-     -e CF_RECORDS=home.example.com \
+     -e ZONE=example.com \
+     -e RECORDS=home.example.com \
      -e DRY_RUN=true \
      ghcr.io/mdr6273/no-fixed-address:latest
    ```
@@ -125,8 +125,8 @@ docker run -d \
   --read-only --tmpfs /tmp \
   --cap-drop ALL --security-opt no-new-privileges \
   -e CF_API_TOKEN=your-token \
-  -e CF_ZONE=example.com \
-  -e CF_RECORDS=home.example.com,vpn.example.com \
+  -e ZONE=example.com \
+  -e RECORDS=home.example.com,vpn.example.com \
   -e TZ=America/Chicago \
   ghcr.io/mdr6273/no-fixed-address:latest
 ```
@@ -152,8 +152,8 @@ services:
     restart: unless-stopped
     environment:
       CF_API_TOKEN: ${CF_API_TOKEN}   # from a .env file next to the compose file
-      CF_ZONE: example.com
-      CF_RECORDS: home.example.com,vpn.example.com
+      ZONE: example.com
+      RECORDS: home.example.com,vpn.example.com
       TZ: America/Chicago
 ```
 
@@ -170,8 +170,8 @@ services:
     restart: unless-stopped
     environment:
       CF_API_TOKEN_FILE: /run/secrets/cf_api_token
-      CF_ZONE: example.com
-      CF_RECORDS: home.example.com
+      ZONE: example.com
+      RECORDS: home.example.com
     secrets:
       - cf_api_token
 
@@ -209,8 +209,8 @@ so Unraid never shows an update for it.
 | --- | --- | --- |
 | `CF_API_TOKEN` | *required* | The [scoped API token](#creating-the-cloudflare-api-token). |
 | `CF_API_TOKEN_FILE` | | Path to a file containing the token, such as a Docker secret. Use instead of `CF_API_TOKEN`, not as well. |
-| `CF_ZONE` | *required* | The zone the records belong to, such as `example.com`. |
-| `CF_RECORDS` | *required* | Comma-separated full names to keep updated, such as `home.example.com,vpn.example.com` (not just `home`). Use `@` for the zone itself; wildcards such as `*.example.com` work too. Often one name is enough: see [Pointing more names at it](#pointing-more-names-at-it). |
+| `ZONE` | *required* | The zone the records belong to, such as `example.com`. |
+| `RECORDS` | *required* | Comma-separated full names to keep updated, such as `home.example.com,vpn.example.com` (not just `home`). Use `@` for the zone itself; wildcards such as `*.example.com` work too. Often one name is enough: see [Pointing more names at it](#pointing-more-names-at-it). |
 | `INTERVAL` | `86400` | Seconds between checks. A check always runs at startup. |
 | `IPV4` | `true` | Keep A records pointed at the public IPv4 address. |
 | `IPV6` | `false` | Keep AAAA records pointed at the public IPv6 address. Needs [IPv6 inside the container](#could-not-determine-the-public-ipv6-address). |
@@ -245,7 +245,7 @@ with a CNAME, and they all follow it when your address changes:
 | `nas.example.com` | CNAME | `home.example.com` |
 | `photos.example.com` | CNAME | `home.example.com` |
 
-`CF_RECORDS=home.example.com` then covers all of them, and adding a service
+`RECORDS=home.example.com` then covers all of them, and adding a service
 never means changing the container's settings.
 
 Each name has its own proxy setting in Cloudflare (the orange or grey cloud),
@@ -313,14 +313,21 @@ with the `curl` command in [Creating the Cloudflare API token](#creating-the-clo
 and make sure it's an API token rather than the Global API Key. The container
 exits with status 1, since retrying can't fix this.
 
-#### `CF_RECORDS entry 'home' is not in the zone example.com`
+#### `CF_ZONE is now called ZONE`
+
+Version 0.0.3 renamed `CF_ZONE` to `ZONE` and `CF_RECORDS` to `RECORDS`.
+Rename both settings and start the container again; their values stay the
+same. On Unraid, edit the container, select **Edit** next to **Zone**, change
+**Key** to `ZONE`, do the same for **Records** with `RECORDS`, and apply.
+
+#### `RECORDS entry 'home' is not in the zone example.com`
 
 Records are full names. Use `home.example.com`, not `home`. The container
 exits with status 2 until the setting is fixed.
 
 #### `zone example.com was not found`
 
-`CF_ZONE` must be the zone (`example.com`), not a record name
+`ZONE` must be the zone (`example.com`), not a record name
 (`home.example.com`). The token also needs **Zone / Zone / Read**, and its
 **Zone Resources** must include this zone.
 

@@ -25,7 +25,7 @@ TOKEN=e2e-token_0123456789abcdef
 ACCOUNT_TOKEN=cfat_e2e-account-token_0123456789
 
 # Settings from the caller's environment must not leak into the runs below.
-unset CF_API_TOKEN CF_API_TOKEN_FILE CF_ZONE CF_RECORDS INTERVAL IPV4 IPV6 \
+unset CF_API_TOKEN CF_API_TOKEN_FILE CF_ZONE CF_RECORDS ZONE RECORDS INTERVAL IPV4 IPV6 \
     PROXIED TTL CREATE_IF_MISSING DRY_RUN LOG_LEVEL IPV4_SOURCES IPV6_SOURCES \
     CF_API_URL STATE_DIR NFA_SOURCE_ONLY
 
@@ -107,7 +107,7 @@ mock_has() {
 
 # Starts the updater in the background with the shared settings plus "$@".
 nfa_start() {
-    set -- "CF_API_TOKEN=$TOKEN" CF_ZONE=example.com "CF_API_URL=$API_URL" \
+    set -- "CF_API_TOKEN=$TOKEN" ZONE=example.com "CF_API_URL=$API_URL" \
         "IPV4_SOURCES=$TRACE_URL" LOG_LEVEL=debug "$@"
     : >"$WORK/out"
     if [ -n "$IMAGE" ]; then
@@ -134,7 +134,7 @@ nfa_start() {
 # Runs the updater in the foreground until it exits by itself, leaving the
 # exit status in RUN_STATUS.
 nfa_run() {
-    set -- "CF_API_TOKEN=$TOKEN" CF_ZONE=example.com "CF_API_URL=$API_URL" \
+    set -- "CF_API_TOKEN=$TOKEN" ZONE=example.com "CF_API_URL=$API_URL" \
         "IPV4_SOURCES=$TRACE_URL" LOG_LEVEL=debug "$@"
     if [ -n "$IMAGE" ]; then
         for kv do
@@ -227,7 +227,7 @@ fi
 echo
 echo "Dry run"
 before=$failed
-nfa_start CF_RECORDS=home.example.com,vpn.example.com DRY_RUN=true CREATE_IF_MISSING=true INTERVAL=3600
+nfa_start RECORDS=home.example.com,vpn.example.com DRY_RUN=true CREATE_IF_MISSING=true INTERVAL=3600
 check "completes the first check" wait_for 30 log_has 'check complete'
 check "verifies the token" log_has 'API token verified'
 check "reports the update it would make" log_has '[dry-run] home.example.com A 1.2.3.4 -> 5.6.7.8'
@@ -242,7 +242,7 @@ show_log always
 echo
 echo "Account-owned token"
 before=$failed
-nfa_start "CF_API_TOKEN=$ACCOUNT_TOKEN" CF_RECORDS=home.example.com DRY_RUN=true INTERVAL=3600
+nfa_start "CF_API_TOKEN=$ACCOUNT_TOKEN" RECORDS=home.example.com DRY_RUN=true INTERVAL=3600
 check "completes the first check" wait_for 30 log_has 'check complete'
 check "verifies the token under its account" log_has 'API token verified (account-owned)'
 check "never logs the token" not log_has "$ACCOUNT_TOKEN"
@@ -252,7 +252,7 @@ show_log failures "$before"
 echo
 echo "Live updates"
 before=$failed
-nfa_start CF_RECORDS=home.example.com,vpn.example.com CREATE_IF_MISSING=true INTERVAL=2
+nfa_start RECORDS=home.example.com,vpn.example.com CREATE_IF_MISSING=true INTERVAL=2
 check "completes the first check" wait_for 30 log_has 'check complete'
 check "updates the stale record" log_has 'home.example.com A 1.2.3.4 -> 5.6.7.8'
 check "creates the missing record" log_has 'vpn.example.com A created with 5.6.7.8'
@@ -274,7 +274,7 @@ echo
 echo "Proxy status"
 before=$failed
 # home already has the current address, so only its proxy status differs.
-nfa_start CF_RECORDS=home.example.com PROXIED=true INTERVAL=2
+nfa_start RECORDS=home.example.com PROXIED=true INTERVAL=2
 check "turns the proxy on" wait_for 30 log_has 'home.example.com A proxied false -> true'
 check "the API has the record proxied" mock_has 'A home.example.com 9.9.9.9 proxied=true '
 check "leaves it alone afterwards" wait_for 30 log_has 'home.example.com A 9.9.9.9 unchanged'
@@ -285,7 +285,7 @@ show_log failures "$before"
 echo
 echo "Address lookup failure"
 before=$failed
-nfa_start CF_RECORDS=home.example.com INTERVAL=3600 "IPV4_SOURCES=http://$MOCK_HOST:$PORT/missing"
+nfa_start RECORDS=home.example.com INTERVAL=3600 "IPV4_SOURCES=http://$MOCK_HOST:$PORT/missing"
 check "warns that the address is unknown" wait_for 30 log_has 'could not determine the public IPv4 address'
 check "backs off for 60 seconds" wait_for 10 log_has 'check incomplete; retrying in 60s'
 check "reports unhealthy" not nfa_health
@@ -296,7 +296,7 @@ echo
 echo "API outage at startup"
 before=$failed
 mock POST 'fail?count=1&status=503' >/dev/null
-nfa_start CF_RECORDS=home.example.com INTERVAL=3600
+nfa_start RECORDS=home.example.com INTERVAL=3600
 check "treats HTTP 503 as temporary" wait_for 30 log_has 'could not verify the API token: HTTP 503'
 check "backs off instead of exiting" wait_for 10 log_has 'retrying in 60s'
 check "is still running" nfa_running
@@ -306,7 +306,7 @@ show_log failures "$before"
 echo
 echo "Missing record without CREATE_IF_MISSING"
 before=$failed
-nfa_start CF_RECORDS=nothere.example.com INTERVAL=3600
+nfa_start RECORDS=nothere.example.com INTERVAL=3600
 check "explains what to do" wait_for 30 log_has 'nothere.example.com has no A record; create it in Cloudflare or set CREATE_IF_MISSING=true'
 check "waits for the next check" wait_for 10 log_has 'check finished with problems that need attention; next check in 3600s'
 check "keeps running" nfa_running
@@ -317,17 +317,17 @@ show_log failures "$before"
 echo
 echo "Fatal problems"
 before=$failed
-nfa_run CF_RECORDS=home.example.com CF_API_TOKEN=not-the-right-token
+nfa_run RECORDS=home.example.com CF_API_TOKEN=not-the-right-token
 check "a rejected token exits with status 1 (got $RUN_STATUS)" [ "$RUN_STATUS" -eq 1 ]
 check "a rejected token is explained" log_has 'Cloudflare rejected the API token'
-nfa_run CF_ZONE=example.org CF_RECORDS=home.example.org
+nfa_run ZONE=example.org RECORDS=home.example.org
 check "an unknown zone exits with status 1 (got $RUN_STATUS)" [ "$RUN_STATUS" -eq 1 ]
 check "an unknown zone is explained" log_has 'zone example.org was not found'
-nfa_run CF_RECORDS=home.example.org INTERVAL=soon
+nfa_run RECORDS=home.example.org INTERVAL=soon
 check "invalid settings exit with status 2 (got $RUN_STATUS)" [ "$RUN_STATUS" -eq 2 ]
 check "every invalid setting is reported" log_has "INTERVAL must be a whole number of seconds, not 'soon'"
-check "records outside the zone are reported" log_has "CF_RECORDS entry 'home.example.org' is not in the zone example.com"
-nfa_run CF_RECORDS=home.example.com CF_API_TOKEN=
+check "records outside the zone are reported" log_has "RECORDS entry 'home.example.org' is not in the zone example.com"
+nfa_run RECORDS=home.example.com CF_API_TOKEN=
 check "a missing token exits with status 2 (got $RUN_STATUS)" [ "$RUN_STATUS" -eq 2 ]
 show_log failures "$before"
 
