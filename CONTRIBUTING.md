@@ -27,8 +27,9 @@ time on it.
 
 ## Releasing
 
-1. Move the Unreleased entries in `CHANGELOG.md` into a new version section and update the links at the bottom.
-2. Commit, then tag and push: `git tag v1.2.3 && git push origin v1.2.3`.
+1. On a branch, move the Unreleased entries in `CHANGELOG.md` into a new version section and update the links at the bottom. Pick the number by [Versions](README.md#versions) in the README.
+2. Open a pull request. `main` only accepts changes through pull requests whose checks pass.
+3. Once it's merged, tag the merge commit and push the tag: `git fetch origin && git tag -a v1.2.3 -m "No Fixed Address 1.2.3" origin/main && git push origin v1.2.3`. Release tags can't be moved or deleted afterwards, so check the commit first.
 
 The release workflow builds the image for amd64 and arm64, pushes it to
 GitHub Container Registry with version tags and `latest`, and creates the
