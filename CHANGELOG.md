@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-11-07
+
+The first stable release, after running on real hardware through restarts, updates and a change of public IP address. The container works exactly as in 0.0.3.
+
+### Added
+
+- A [Versions](https://github.com/mdr6273/no-fixed-address#versions) section in the README that says which changes count as breaking and which image tag to use. From this release on, settings, their defaults and the image name only change in a new major version, and the `1` tag never brings a breaking change.
+
 ## [0.0.3] - 2026-11-07
 
 ### Changed
@@ -32,7 +40,8 @@ All notable changes to this project are documented here. The format follows
 - Multi-architecture image (linux/amd64, linux/arm64) on GitHub Container Registry, running as a non-root user.
 - Unraid template and icon. The template runs the container with no capabilities and a read-only filesystem.
 
-[Unreleased]: https://github.com/mdr6273/no-fixed-address/compare/v0.0.3...HEAD
+[Unreleased]: https://github.com/mdr6273/no-fixed-address/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/mdr6273/no-fixed-address/compare/v0.0.3...v1.0.0
 [0.0.3]: https://github.com/mdr6273/no-fixed-address/compare/v0.0.2...v0.0.3
 [0.0.2]: https://github.com/mdr6273/no-fixed-address/compare/v0.0.1...v0.0.2
 [0.0.1]: https://github.com/mdr6273/no-fixed-address/releases/tag/v0.0.1
