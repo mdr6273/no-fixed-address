@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.0.3] - 2026-11-07
+
+### Changed
+
+- **Breaking:** `CF_ZONE` is now `ZONE` and `CF_RECORDS` is now `RECORDS`, so the names no longer tie the container to one DNS provider. The values stay the same. A container that still uses the old names stops at startup with a message naming the new ones. On Unraid, edit the container, select **Edit** next to **Zone** and **Records**, change each **Key** to `ZONE` and `RECORDS`, and apply.
+
 ## [0.0.2] - 2026-10-30
 
 ### Changed
@@ -26,6 +32,7 @@ All notable changes to this project are documented here. The format follows
 - Multi-architecture image (linux/amd64, linux/arm64) on GitHub Container Registry, running as a non-root user.
 - Unraid template and icon. The template runs the container with no capabilities and a read-only filesystem.
 
-[Unreleased]: https://github.com/mdr6273/no-fixed-address/compare/v0.0.2...HEAD
+[Unreleased]: https://github.com/mdr6273/no-fixed-address/compare/v0.0.3...HEAD
+[0.0.3]: https://github.com/mdr6273/no-fixed-address/compare/v0.0.2...v0.0.3
 [0.0.2]: https://github.com/mdr6273/no-fixed-address/compare/v0.0.1...v0.0.2
 [0.0.1]: https://github.com/mdr6273/no-fixed-address/releases/tag/v0.0.1
