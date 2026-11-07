@@ -135,10 +135,8 @@ The `--read-only`, `--tmpfs`, `--cap-drop` and `--security-opt` lines are
 optional but recommended: the container needs no privileges and writes only to
 `/tmp`.
 
-`latest` follows the newest release, and each release is also published under
-its exact version, such as `0.0.1`. Until 1.0.0, any release may change
-behaviour, so pin an exact version if you'd rather upgrade on your own
-schedule, and read the [changelog](CHANGELOG.md) before moving to a new one.
+`latest` follows the newest release. To get fixes and new features but never a
+breaking change, use `1` instead; [Versions](#versions) lists all the tags.
 
 ## Docker Compose
 
@@ -191,17 +189,44 @@ sudo chmod 0400 cf_api_token.txt
 
 ## Updating
 
-Read the [changelog](CHANGELOG.md) before updating: until 1.0.0, any release
-may change behaviour. Your settings carry over, because they live in the
-container's configuration, not inside the image.
+Your settings carry over, because they live in the container's configuration,
+not inside the image. `latest` also brings new major versions, which can
+rename settings or change defaults, so glance at the [changelog](CHANGELOG.md)
+when an update shows up: if the version's first number has gone up, read what
+changed before applying it.
 
 - **Unraid:** when a new version is published, the Docker tab shows **update ready** next to the container (**Check for Updates** looks right away). Select it and apply the update.
 - **Docker Compose:** in the folder with your compose file, run `docker compose pull`, then `docker compose up -d`.
 - **docker run:** run `docker pull ghcr.io/mdr6273/no-fixed-address:latest`, remove the container with `docker rm -f nofixedaddress`, and start it again with the same `docker run` command. A running container keeps using the image it started with.
 
-These steps assume the `latest` tag. If you pinned an exact version such as
-`0.0.1`, change the tag to the new version instead. A pinned tag never changes,
-so Unraid never shows an update for it.
+These steps assume the `latest` tag, and work the same for `1` and `1.0`. If you
+pinned an exact version such as `1.0.0`, change the tag to the new version
+instead. A pinned tag never changes, so Unraid never shows an update for it.
+
+### Versions
+
+Version numbers have three parts, and the part that goes up tells you what
+kind of release it is ([semantic versioning](https://semver.org/)):
+
+| Release | What changed | Before updating |
+| --- | --- | --- |
+| 1.0.**1** | Fixes, including rebuilds for security updates in the base image | Nothing to do |
+| 1.**1**.0 | New features, such as a new optional setting; existing setups work as before | Nothing to do |
+| **2**.0.0 | Breaking changes, such as a renamed setting or a different default | Read the [changelog](CHANGELOG.md) |
+
+Breaking means a change to the names, defaults or meaning of the settings in
+[Configuration](#configuration), the image name, or the user ID the container
+runs as (10001). Log messages can change in any release, and so can
+`CF_API_URL`, which exists only for testing.
+
+Each release is published under several tags:
+
+| Tag | Moves to | Use it to |
+| --- | --- | --- |
+| `latest` | every release | always run the newest version (the Unraid template uses this) |
+| `1` | 1.x.y releases | get fixes and features, but never a breaking change |
+| `1.0` | 1.0.x releases | get fixes only |
+| `1.0.0` | nothing; it never changes | update only when you choose |
 
 ## Configuration
 
@@ -264,7 +289,7 @@ zone and records, detecting the address) but never writes to Cloudflare.
 Changes it would have made are logged with a `[dry-run]` prefix:
 
 ```text
-2026-10-29T23:23:52-0500 info  No Fixed Address 0.0.1 starting
+2026-10-29T23:23:52-0500 info  No Fixed Address 1.0.0 starting
 2026-10-29T23:23:53-0500 info  zone example.com: keeping A records for home.example.com, vpn.example.com pointed at this host
 2026-10-29T23:23:53-0500 info  checking every 86400s; proxied: as is, ttl: as is, create missing records: true
 2026-10-29T23:23:53-0500 info  dry run: changes are logged but not applied
