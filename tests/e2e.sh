@@ -11,6 +11,9 @@
 #   sh tests/e2e.sh                               # runs src/nofixedaddress.sh
 #   NFA_IMAGE=nofixedaddress:dev sh tests/e2e.sh  # runs a built image instead
 #
+# NFA_PLATFORM, such as linux/arm/v7, is passed to docker run as --platform,
+# for an image built for another architecture and run under QEMU.
+#
 # Needs curl and python3, plus jq when running the script directly. In image
 # mode the container uses the host network so it can reach the mock on
 # 127.0.0.1. Docker Desktop has no host network by default; there, run with
@@ -23,6 +26,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 SCRIPT=$here/../src/nofixedaddress.sh
 PYTHON=${PYTHON:-python3}
 IMAGE=${NFA_IMAGE:-}
+PLATFORM=${NFA_PLATFORM:-}
 DOCKER_NETWORK=${NFA_DOCKER_NETWORK:-host}
 MOCK_HOST=${NFA_MOCK_HOST:-127.0.0.1}
 MOCK_BIND=${MOCK_BIND:-127.0.0.1}
@@ -138,6 +142,7 @@ nfa_start() {
             shift
             set -- "$@" -e "$kv"
         done
+        [ -z "$PLATFORM" ] || set -- --platform "$PLATFORM" "$@"
         # Locked down the way the README and the Unraid template run it.
         CID=$(docker run -d --network "$DOCKER_NETWORK" --read-only --tmpfs /tmp \
             --cap-drop ALL --security-opt no-new-privileges "$@" "$IMAGE")
@@ -164,6 +169,7 @@ nfa_run() {
             shift
             set -- "$@" -e "$kv"
         done
+        [ -z "$PLATFORM" ] || set -- --platform "$PLATFORM" "$@"
         with_time_limit docker run --rm --network "$DOCKER_NETWORK" "$@" "$IMAGE" >"$WORK/out" 2>&1
         RUN_STATUS=$?
     else
