@@ -1,7 +1,11 @@
 #!/bin/sh
 # End-to-end tests against tests/mock_cf_api.py: startup, a dry run, real
 # updates, a record deleted behind the updater's back, turning the proxy on,
-# lookup and API failures, fatal configuration problems, and prompt shutdown.
+# records in several zones, lookup and API failures, fatal configuration
+# problems, and prompt shutdown. Scenarios run both with ZONE set, the way
+# installs from before 1.1.0 are set up, and without it, so each record's
+# zone is found automatically. Which zone wins when several match, including
+# zones that are not active yet, is covered by the unit tests in run.sh.
 #
 #   sh tests/e2e.sh                               # runs src/nofixedaddress.sh
 #   NFA_IMAGE=nofixedaddress:dev sh tests/e2e.sh  # runs a built image instead
@@ -80,10 +84,13 @@ with_time_limit() {
 
 # --- the mock API -------------------------------------------------------------
 
+# Two zones, one a subdomain zone of the other, listed one per page so that
+# finding the zones without ZONE has to page through the listing.
 start_mock() {
     "$PYTHON" "$here/mock_cf_api.py" --host "$MOCK_BIND" --port-file "$WORK/port" \
-        --token "$TOKEN" --account-token "$ACCOUNT_TOKEN" --zone example.com --ip 5.6.7.8 \
-        --record A:home.example.com:1.2.3.4 &
+        --token "$TOKEN" --account-token "$ACCOUNT_TOKEN" \
+        --zone example.com --zone sub.example.com --max-per-page 1 --ip 5.6.7.8 \
+        --record A:home.example.com:1.2.3.4 --record A:host.sub.example.com:1.2.3.4 &
     MOCK_PID=$!
     if ! wait_for 20 test -s "$WORK/port"; then
         echo "the mock API did not start" >&2
@@ -106,8 +113,9 @@ mock_has() {
 # --- running the updater ------------------------------------------------------
 
 # Starts the updater in the background with the shared settings plus "$@".
+# ZONE is not shared: each scenario says whether it sets one.
 nfa_start() {
-    set -- "CF_API_TOKEN=$TOKEN" ZONE=example.com "CF_API_URL=$API_URL" \
+    set -- "CF_API_TOKEN=$TOKEN" "CF_API_URL=$API_URL" \
         "IPV4_SOURCES=$TRACE_URL" LOG_LEVEL=debug "$@"
     : >"$WORK/out"
     if [ -n "$IMAGE" ]; then
@@ -134,7 +142,7 @@ nfa_start() {
 # Runs the updater in the foreground until it exits by itself, leaving the
 # exit status in RUN_STATUS.
 nfa_run() {
-    set -- "CF_API_TOKEN=$TOKEN" ZONE=example.com "CF_API_URL=$API_URL" \
+    set -- "CF_API_TOKEN=$TOKEN" "CF_API_URL=$API_URL" \
         "IPV4_SOURCES=$TRACE_URL" LOG_LEVEL=debug "$@"
     if [ -n "$IMAGE" ]; then
         for kv do
@@ -230,6 +238,9 @@ before=$failed
 nfa_start RECORDS=home.example.com,vpn.example.com DRY_RUN=true CREATE_IF_MISSING=true INTERVAL=3600
 check "completes the first check" wait_for 30 log_has 'check complete'
 check "verifies the token" log_has 'API token verified'
+check "pages through the zones" log_has 'GET /zones?per_page=50&page=2: HTTP 200'
+check "finds the zone of every record" \
+    log_has 'zone example.com: keeping A records for home.example.com, vpn.example.com pointed at this host'
 check "reports the update it would make" log_has '[dry-run] home.example.com A 1.2.3.4 -> 5.6.7.8'
 check "reports the record it would create" log_has '[dry-run] vpn.example.com A created with 5.6.7.8'
 check "writes nothing" mock_has 'writes 0'
@@ -242,9 +253,10 @@ show_log always
 echo
 echo "Account-owned token"
 before=$failed
-nfa_start "CF_API_TOKEN=$ACCOUNT_TOKEN" RECORDS=home.example.com DRY_RUN=true INTERVAL=3600
+nfa_start "CF_API_TOKEN=$ACCOUNT_TOKEN" ZONE=example.com RECORDS=home.example.com DRY_RUN=true INTERVAL=3600
 check "completes the first check" wait_for 30 log_has 'check complete'
 check "verifies the token under its account" log_has 'API token verified (account-owned)'
+check "says that ZONE is optional" log_has 'ZONE is optional since 1.1.0'
 check "never logs the token" not log_has "$ACCOUNT_TOKEN"
 check_prompt_stop
 show_log failures "$before"
@@ -274,7 +286,7 @@ echo
 echo "Proxy status"
 before=$failed
 # home already has the current address, so only its proxy status differs.
-nfa_start RECORDS=home.example.com PROXIED=true INTERVAL=2
+nfa_start ZONE=example.com RECORDS=home.example.com PROXIED=true INTERVAL=2
 check "turns the proxy on" wait_for 30 log_has 'home.example.com A proxied false -> true'
 check "the API has the record proxied" mock_has 'A home.example.com 9.9.9.9 proxied=true '
 check "leaves it alone afterwards" wait_for 30 log_has 'home.example.com A 9.9.9.9 unchanged'
@@ -283,9 +295,30 @@ check_prompt_stop
 show_log failures "$before"
 
 echo
+echo "Several zones"
+before=$failed
+# home is in example.com and host in its subdomain zone sub.example.com. An
+# account-owned token without ZONE has to find its account from the listing.
+mock POST 'ip?value=7.7.7.7' >/dev/null
+nfa_start "CF_API_TOKEN=$ACCOUNT_TOKEN" RECORDS=home.example.com,host.sub.example.com INTERVAL=3600
+check "completes the first check" wait_for 30 log_has 'check complete'
+check "verifies an account-owned token without ZONE" log_has 'API token verified (account-owned)'
+check "finds the parent zone" \
+    log_has 'zone example.com: keeping A records for home.example.com pointed at this host'
+check "finds the subdomain zone" \
+    log_has 'zone sub.example.com: keeping A records for host.sub.example.com pointed at this host'
+check "updates the record in the parent zone" log_has 'home.example.com A 9.9.9.9 -> 7.7.7.7'
+check "updates the record in the subdomain zone" log_has 'host.sub.example.com A 1.2.3.4 -> 7.7.7.7'
+check "the parent zone has the new address" mock_has 'example.com A home.example.com 7.7.7.7 '
+check "the subdomain zone has the new address" mock_has 'sub.example.com A host.sub.example.com 7.7.7.7 '
+check "writes once per record" mock_has 'writes 7'
+check_prompt_stop
+show_log failures "$before"
+
+echo
 echo "Address lookup failure"
 before=$failed
-nfa_start RECORDS=home.example.com INTERVAL=3600 "IPV4_SOURCES=http://$MOCK_HOST:$PORT/missing"
+nfa_start ZONE=example.com RECORDS=home.example.com INTERVAL=3600 "IPV4_SOURCES=http://$MOCK_HOST:$PORT/missing"
 check "warns that the address is unknown" wait_for 30 log_has 'could not determine the public IPv4 address'
 check "backs off for 60 seconds" wait_for 10 log_has 'check incomplete; retrying in 60s'
 check "reports unhealthy" not nfa_health
@@ -296,7 +329,7 @@ echo
 echo "API outage at startup"
 before=$failed
 mock POST 'fail?count=1&status=503' >/dev/null
-nfa_start RECORDS=home.example.com INTERVAL=3600
+nfa_start ZONE=example.com RECORDS=home.example.com INTERVAL=3600
 check "treats HTTP 503 as temporary" wait_for 30 log_has 'could not verify the API token: HTTP 503'
 check "backs off instead of exiting" wait_for 10 log_has 'retrying in 60s'
 check "is still running" nfa_running
@@ -323,10 +356,17 @@ check "a rejected token is explained" log_has 'Cloudflare rejected the API token
 nfa_run ZONE=example.org RECORDS=home.example.org
 check "an unknown zone exits with status 1 (got $RUN_STATUS)" [ "$RUN_STATUS" -eq 1 ]
 check "an unknown zone is explained" log_has 'zone example.org was not found'
-nfa_run RECORDS=home.example.org INTERVAL=soon
+nfa_run RECORDS=home.example.com,home.example.org
+check "a record in no zone exits with status 1 (got $RUN_STATUS)" [ "$RUN_STATUS" -eq 1 ]
+check "a record in no zone is explained" \
+    log_has 'no zone was found for home.example.org; check the name, and that the token has Zone:Zone:Read for its zone (the token can see example.com, sub.example.com)'
+nfa_run ZONE=example.com RECORDS=home.example.org INTERVAL=soon
 check "invalid settings exit with status 2 (got $RUN_STATUS)" [ "$RUN_STATUS" -eq 2 ]
 check "every invalid setting is reported" log_has "INTERVAL must be a whole number of seconds, not 'soon'"
 check "records outside the zone are reported" log_has "RECORDS entry 'home.example.org' is not in the zone example.com"
+nfa_run RECORDS=@
+check "@ without ZONE exits with status 2 (got $RUN_STATUS)" [ "$RUN_STATUS" -eq 2 ]
+check "@ without ZONE is explained" log_has "RECORDS entry '@' needs ZONE"
 nfa_run RECORDS=home.example.com CF_API_TOKEN=
 check "a missing token exits with status 2 (got $RUN_STATUS)" [ "$RUN_STATUS" -eq 2 ]
 show_log failures "$before"

@@ -30,16 +30,16 @@ expire unless you tell it to. No Fixed Address does exactly that, and nothing
 else:
 
 - **Set and forget.** Checks when it starts and then once a day (configurable), and only writes when the address has actually changed.
-- **IPv4 and IPv6.** Any number of names in one zone, including the zone apex and wildcards.
+- **IPv4 and IPv6.** Any number of names, in one zone or several, including zone apexes and wildcards.
 - **Leaves your settings alone.** Proxy status and TTL are preserved unless you ask it to manage them.
-- **Least privilege.** One API token limited to one zone, a non-root container, and the token is never logged or put on a command line.
+- **Least privilege.** One API token limited to the zones you use, a non-root container, and the token is never logged or put on a command line.
 - **Rides out outages.** Network and API failures are retried with backoff, from one minute up to an hour. It never crash-loops.
 - **Tells you when it's stuck.** A Docker health check turns unhealthy when updates stop succeeding.
 - **Small.** A POSIX shell script with curl and jq on Alpine, for amd64 and arm64.
 
 ## How it works
 
-1. At startup it checks every setting, verifies the API token with Cloudflare and looks up the zone. Bad settings stop the container with a message saying what to fix.
+1. At startup it checks every setting, verifies the API token with Cloudflare and finds the zone each record is in. Bad settings stop the container with a message saying what to fix.
 2. It finds the public address by asking `https://1.1.1.1/cdn-cgi/trace`, falling back to `api.ipify.org` and `ifconfig.me`. IPv6 uses `[2606:4700:4700::1111]/cdn-cgi/trace` and `api6.ipify.org`. Answers are strictly validated, and private or reserved addresses are rejected, so a failed or garbled lookup can't put a nonsense address in your DNS. Validation can't prove an address is really yours, which is why every default service uses HTTPS.
 3. It compares the address with each record and updates only the ones that differ.
 4. It sleeps until the next check. If something failed along the way, it retries after 60 seconds, then 2 minutes, then 4, up to an hour, until a check succeeds.
@@ -63,9 +63,9 @@ else:
 
 ## Creating the Cloudflare API token
 
-The container needs an API token that can read your zone and edit its DNS
-records. Limit it to the one zone so that, if it ever leaked, nothing else in
-your Cloudflare account would be exposed.
+The container needs an API token that can read the zones your records are in
+and edit their DNS records. Limit it to those zones so that, if it ever
+leaked, nothing else in your Cloudflare account would be exposed.
 
 1. Log in to the [Cloudflare dashboard](https://dash.cloudflare.com/), open **My Profile** from the account menu, and choose **API Tokens**.
 2. Select **Create Token**, then **Create Custom Token** (**Get started**).
@@ -73,7 +73,7 @@ your Cloudflare account would be exposed.
 4. Under **Permissions**, add two rows:
    - **Zone** / **DNS** / **Edit**
    - **Zone** / **Zone** / **Read**
-5. Under **Zone Resources**, choose **Include** / **Specific zone** / your domain.
+5. Under **Zone Resources**, choose **Include** / **Specific zone** / your domain. If your records are in more than one domain, add a row for each.
 6. Leave **Client IP Address Filtering** empty. Your IP address is the thing that changes, so a filter would eventually lock the container out.
 7. Leave the **TTL** (token expiry) empty, or set an end date and remember to replace the token before then.
 8. Select **Continue to summary**, then **Create Token**, and copy the token. Cloudflare shows it only once.
@@ -180,7 +180,7 @@ secrets:
 
 The container runs as uid 10001, so the file must be readable by that user.
 Make it readable by no one else, since anyone who can read it can change
-every record in the zone:
+every record in your zones:
 
 ```sh
 sudo chown 10001:10001 cf_api_token.txt
@@ -234,8 +234,7 @@ Each release is published under several tags:
 | --- | --- | --- |
 | `CF_API_TOKEN` | *required* | The [scoped API token](#creating-the-cloudflare-api-token). |
 | `CF_API_TOKEN_FILE` | | Path to a file containing the token, such as a Docker secret. Use instead of `CF_API_TOKEN`, not as well. |
-| `ZONE` | *required* | The zone the records belong to, such as `example.com`. |
-| `RECORDS` | *required* | Comma-separated full names to keep updated, such as `home.example.com,vpn.example.com` (not just `home`). Use `@` for the zone itself; wildcards such as `*.example.com` work too. Often one name is enough: see [Pointing more names at it](#pointing-more-names-at-it). |
+| `RECORDS` | *required* | Comma-separated full names to keep updated, such as `home.example.com,vpn.example.com` (not just `home`). They can be in different zones: the container finds each name's zone among the zones the token can see. Wildcards such as `*.example.com` work too. Often one name is enough: see [Pointing more names at it](#pointing-more-names-at-it). |
 | `INTERVAL` | `86400` | Seconds between checks. A check always runs at startup. |
 | `IPV4` | `true` | Keep A records pointed at the public IPv4 address. |
 | `IPV6` | `false` | Keep AAAA records pointed at the public IPv6 address. Needs [IPv6 inside the container](#could-not-determine-the-public-ipv6-address). |
@@ -254,6 +253,7 @@ These rarely need changing:
 
 | Variable | Default | Description |
 | --- | --- | --- |
+| `ZONE` | *unset* | Restricts `RECORDS` to one zone, such as `example.com`, and lets `@` in `RECORDS` stand for it. Unset, each record's zone is found among the zones the token can see, and when two match, as with a subdomain zone such as `sub.example.com`, the longer one wins. Required before 1.1.0, so older setups have it, and they keep working as they are. |
 | `IPV4_SOURCES` | `https://1.1.1.1/cdn-cgi/trace,https://api.ipify.org,https://ifconfig.me/ip` | Comma-separated lookup URLs, tried in order. Each must answer with the bare address or with an `ip=` line. Use `https://` URLs: plain `http://` works but is warned about at startup, because anyone on the network path could answer with an address of their choosing. |
 | `IPV6_SOURCES` | `https://[2606:4700:4700::1111]/cdn-cgi/trace,https://api6.ipify.org` | The same, for IPv6. |
 | `STATE_DIR` | `/tmp/nofixedaddress` | Where the health check's timestamp is kept. |
@@ -285,15 +285,15 @@ and a few rules decide which to use:
 ## Testing with DRY_RUN
 
 `DRY_RUN=true` runs everything as normal (verifying the token, finding the
-zone and records, detecting the address) but never writes to Cloudflare.
+zones and records, detecting the address) but never writes to Cloudflare.
 Changes it would have made are logged with a `[dry-run]` prefix:
 
 ```text
 2026-10-29T23:23:52-0500 info  No Fixed Address 1.0.0 starting
-2026-10-29T23:23:53-0500 info  zone example.com: keeping A records for home.example.com, vpn.example.com pointed at this host
 2026-10-29T23:23:53-0500 info  checking every 86400s; proxied: as is, ttl: as is, create missing records: true
 2026-10-29T23:23:53-0500 info  dry run: changes are logged but not applied
 2026-10-29T23:23:54-0500 info  API token verified
+2026-10-29T23:23:54-0500 info  zone example.com: keeping A records for home.example.com, vpn.example.com pointed at this host
 2026-10-29T23:23:55-0500 info  [dry-run] home.example.com A 1.2.3.4 -> 5.6.7.8
 2026-10-29T23:23:56-0500 info  [dry-run] vpn.example.com A created with 5.6.7.8
 2026-10-29T23:23:56-0500 info  check complete (IPv4 5.6.7.8): 2 updated, 0 unchanged
@@ -344,15 +344,30 @@ Version 0.0.3 renamed `CF_ZONE` to `ZONE` and `CF_RECORDS` to `RECORDS`.
 Rename both settings and start the container again; their values stay the
 same. On Unraid, edit the container, select **Edit** next to **Zone**, change
 **Key** to `ZONE`, do the same for **Records** with `RECORDS`, and apply.
+Since 1.1.0 `ZONE` is optional, so you can also remove `CF_ZONE` instead of
+renaming it.
 
-#### `RECORDS entry 'home' is not in the zone example.com`
+#### `RECORDS entry 'home' is not a full name like home.example.com`
 
-Records are full names. Use `home.example.com`, not `home`. The container
-exits with status 2 until the setting is fixed.
+Records are full names. Use `home.example.com`, not `home`. With `ZONE` set,
+the same mistake reads `RECORDS entry 'home' is not in the zone example.com`.
+The container exits with status 2 until the setting is fixed.
+
+#### `RECORDS entry '@' needs ZONE`
+
+`@` stands for the zone, so it only works with `ZONE` set. Without `ZONE`,
+write the zone name in full, such as `RECORDS=example.com`.
+
+#### `no zone was found for home.example.com`
+
+None of the zones the token can see contains this name. Check the spelling,
+and that the token's **Zone Resources** include the zone it's in. The message
+ends with the zones the token can see. The container exits with status 1,
+since retrying can't fix this.
 
 #### `zone example.com was not found`
 
-`ZONE` must be the zone (`example.com`), not a record name
+With `ZONE` set, it must be the zone (`example.com`), not a record name
 (`home.example.com`). The token also needs **Zone / Zone / Read**, and its
 **Zone Resources** must include this zone.
 
@@ -400,12 +415,12 @@ tools share the same token.
 #### The container keeps restarting
 
 Exit status 2 means a setting is invalid, and 1 means Cloudflare rejected the
-token or couldn't find the zone. The last lines of the log say which, and the
+token or a record is in no zone the token can see. The last lines of the log say which, and the
 restart policy keeps restarting it until the setting is fixed.
 
 ## Security
 
-- The token only needs DNS edit and zone read rights on a single zone.
+- The token only needs DNS edit and zone read rights on the zones your records are in.
 - The container runs as an unprivileged user (uid 10001), needs no capabilities, and works with a read-only root filesystem plus a tmpfs at `/tmp`.
 - The token is never logged, and reaches curl on standard input rather than its command line. The script removes it from its own environment before it starts curl or jq. A token passed as `CF_API_TOKEN` still stays in the container's configuration, where `docker inspect`, `docker exec` sessions and the health check can see it. Use `CF_API_TOKEN_FILE` to avoid that.
 - Addresses from the lookup services are validated before use, and private, loopback and reserved ranges are refused.

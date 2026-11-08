@@ -6,8 +6,8 @@
 # SPDX-License-Identifier: MIT
 #
 # Exit status: 0 after a TERM/INT shutdown, 1 when Cloudflare rejects the
-# token or cannot find the zone, 2 for invalid configuration. Everything else
-# is retried rather than treated as fatal.
+# token or a record is in no zone it can see, 2 for invalid configuration.
+# Everything else is retried rather than treated as fatal.
 #
 # `local` is not POSIX, but busybox ash, dash and bash all support it, and a
 # long-running loop is much easier to reason about without stray globals.
@@ -38,6 +38,13 @@ CR=$(printf '\r')
 LOG_THRESHOLD=20
 CHILD_PID=''
 NFA_TMP=''
+# The zones the token can see, one "NAME ID STATUS" line each, and the zone
+# of every record, one "RECORD ZONE_NAME ZONE_ID" line each. An empty
+# ZONE_MAP means the zones still have to be looked up.
+ZONE_TABLE=''
+ZONE_MAP=''
+# The zone of the record being synced.
+ZONE_NAME=''
 ZONE_ID=''
 RECORD_CACHE=''
 ANNOUNCED=false
@@ -227,13 +234,14 @@ load_config() {
         [ -z "$raw" ] || config_error "$old is now called ${old#CF_}: rename the setting and start the container again"
     done
 
+    # Optional since 1.1.0: without it, each record's zone is found among the
+    # zones the token can see. With it, records must be in that zone and @
+    # stands for it, as before.
     ZONE=${ZONE:-}
     trim_var ZONE
     ZONE=$(lower "$ZONE")
     ZONE=${ZONE%.}
-    if [ -z "$ZONE" ]; then
-        config_error "ZONE is required, e.g. ZONE=example.com"
-    elif ! is_hostname "$ZONE" || [ "${ZONE#\*}" != "$ZONE" ] || [ "${ZONE#*.}" = "$ZONE" ]; then
+    if [ -n "$ZONE" ] && { ! is_hostname "$ZONE" || [ "${ZONE#\*}" != "$ZONE" ] || [ "${ZONE#*.}" = "$ZONE" ]; }; then
         config_error "ZONE '$ZONE' is not a domain name like example.com"
         ZONE=''
     fi
@@ -244,11 +252,21 @@ load_config() {
         $0 != ""
     ')
     for name in $entries; do
-        [ "$name" != @ ] || name=$ZONE
+        if [ "$name" = @ ]; then
+            if [ -z "$ZONE" ]; then
+                config_error "RECORDS entry '@' needs ZONE; without it, write the zone name in full, e.g. RECORDS=example.com"
+                continue
+            fi
+            name=$ZONE
+        fi
         if ! is_hostname "$name"; then
             config_error "RECORDS entry '$name' is not a valid DNS name"
         elif [ -n "$ZONE" ] && [ "$name" != "$ZONE" ] && [ "${name%".$ZONE"}" = "$name" ]; then
             config_error "RECORDS entry '$name' is not in the zone $ZONE"
+        elif [ -z "$ZONE" ] && [ "${name#\*.}" = "${name##*.}" ]; then
+            # Without ZONE the zone comes from the name, so a bare "home"
+            # could be in any of them.
+            config_error "RECORDS entry '$name' is not a full name like home.example.com"
         else
             case " $RECORD_NAMES " in
                 *" $name "*) ;;
@@ -310,11 +328,10 @@ load_config() {
     [ "$CONFIG_ERRORS" -eq 0 ] || return 2
 }
 
+# The zones and their records are described once they have been looked up,
+# by describe_zones.
 describe_config() {
-    local types=''
-    [ "$IPV4" = false ] || types=A
-    [ "$IPV6" = false ] || types="${types:+$types and }AAAA"
-    log info "zone $ZONE: keeping $types records for $(printf '%s' "$RECORD_NAMES" | sed 's/ /, /g') pointed at this host"
+    [ -z "$ZONE" ] || log info "ZONE is optional since 1.1.0: without it, the zone of each record is found automatically"
     log info "checking every ${INTERVAL}s; proxied: ${PROXIED:-as is}, ttl: ${TTL:-as is}, create missing records: $CREATE_IF_MISSING"
     [ "$DRY_RUN" = false ] || log info "dry run: changes are logged but not applied"
 }
@@ -576,7 +593,7 @@ EOF
 report_api_failure() {
     local hint=''
     case $HTTP_STATUS in
-        401 | 403) hint="; the token needs Zone:DNS:Edit and Zone:Zone:Read on $ZONE" ;;
+        401 | 403) hint="; the token needs Zone:DNS:Edit and Zone:Zone:Read on $ZONE_NAME" ;;
     esac
     if [ "$2" -eq 1 ]; then
         log warn "$1 failed: $API_ERROR"
@@ -613,8 +630,16 @@ verify_token() {
 }
 
 verify_account_token() {
-    local rc account
-    cf_api GET "/zones?name=$ZONE"
+    local rc account filter
+    # The account comes from a zone the token can see: ZONE when it is set,
+    # otherwise whichever zone the listing returns first.
+    if [ -n "$ZONE" ]; then
+        # shellcheck disable=SC2016 # $zone is a jq variable
+        filter='[.result[]? | select(.name == $zone) | .account.id] | if length == 1 then .[0] // empty else empty end'
+    else
+        filter='.result[0].account.id // empty'
+    fi
+    cf_api GET "/zones${ZONE:+?name=$ZONE}"
     rc=$?
     case $rc in
         0) ;;
@@ -627,12 +652,14 @@ verify_account_token() {
             return 2
             ;;
     esac
-    account=$(jq -r --arg zone "$ZONE" \
-        '[.result[]? | select(.name == $zone) | .account.id] | if length == 1 then .[0] // empty else empty end' \
-        "$NFA_TMP/body" 2>/dev/null)
+    account=$(jq -r --arg zone "$ZONE" "$filter" "$NFA_TMP/body" 2>/dev/null)
     case $account in
         '' | *[!0-9A-Za-z]*)
-            log error "Cloudflare rejected the API token, or it cannot see zone $ZONE; check the token and that it has Zone:Zone:Read for this zone"
+            if [ -n "$ZONE" ]; then
+                log error "Cloudflare rejected the API token, or it cannot see zone $ZONE; check the token and that it has Zone:Zone:Read for this zone"
+            else
+                log error "Cloudflare rejected the API token, or it cannot see any zone; check the token and that it has Zone:Zone:Read for the zones your records are in"
+            fi
             return 2
             ;;
     esac
@@ -667,34 +694,111 @@ report_rejected_token() {
     log error "Cloudflare rejected the API token ($API_ERROR); check that it was copied completely and has not been deleted or expired"
 }
 
-# Looks up the zone ID for ZONE. Returns 0 on success, 1 if Cloudflare
-# could not be reached, and 2 if the zone is not visible to the token.
-resolve_zone() {
-    local rc id
-    cf_api GET "/zones?name=$ZONE"
-    rc=$?
-    case $rc in
-        0) ;;
-        1)
-            log warn "could not look up zone $ZONE: $API_ERROR"
-            return 1
-            ;;
-        *)
-            log error "looking up zone $ZONE failed ($API_ERROR); the token needs Zone:Zone:Read on it"
-            return 2
-            ;;
-    esac
-    id=$(jq -r --arg zone "$ZONE" \
-        '[.result[]? | select(.name == $zone) | .id] | if length == 1 then .[0] else empty end' \
-        "$NFA_TMP/body" 2>/dev/null)
-    case $id in
-        '' | *[!0-9A-Za-z]*)
-            log error "zone $ZONE was not found; check ZONE, and that the token has Zone:Zone:Read for this zone"
-            return 2
-            ;;
-    esac
-    ZONE_ID=$id
-    log debug "zone $ZONE has ID $ZONE_ID"
+# --- zones ------------------------------------------------------------------
+
+# Fills ZONE_TABLE with the zones the token can see: only ZONE when it is
+# set, otherwise every zone, a page of 50 at a time. Returns 0 on success, 1
+# if Cloudflare could not be reached, and 2 if it refused the request.
+list_zones() {
+    local what page=1 pages rows rc
+    if [ -n "$ZONE" ]; then what="zone $ZONE"; else what=zones; fi
+    ZONE_TABLE=''
+    while :; do
+        cf_api GET "/zones?${ZONE:+name=$ZONE&}per_page=50&page=$page"
+        rc=$?
+        case $rc in
+            0) ;;
+            1)
+                log warn "could not look up $what: $API_ERROR"
+                return 1
+                ;;
+            *)
+                log error "looking up $what failed ($API_ERROR); the token needs Zone:Zone:Read on ${ZONE:-the zones your records are in}"
+                return 2
+                ;;
+        esac
+        rows=$(jq -r '.result[]? | select(.name and .id) | "\(.name) \(.id) \(.status)"' "$NFA_TMP/body" 2>/dev/null)
+        # An empty page ends the listing whatever total_pages claims.
+        [ -n "$rows" ] || break
+        ZONE_TABLE="$ZONE_TABLE$rows$NL"
+        pages=$(jq -r '.result_info.total_pages // 1' "$NFA_TMP/body" 2>/dev/null)
+        pages=$(parse_uint "$pages") || pages=1
+        [ "$page" -lt "$pages" ] || break
+        page=$((page + 1))
+    done
+    # Only well-formed rows and, with ZONE set, only that zone, whatever else
+    # a filter on the name might return.
+    ZONE_TABLE=$(printf '%s' "$ZONE_TABLE" | awk -v zone="$ZONE" '
+        { $1 = tolower($1) }
+        NF >= 3 && $2 ~ /^[0-9A-Za-z]+$/ && (zone == "" || $1 == zone)
+    ')
+}
+
+# zone_for NAME
+# Prints "ZONE_NAME ZONE_ID" for the zone in ZONE_TABLE that record NAME is
+# in: the longest zone name that is NAME itself or ends it after a dot, so
+# host.sub.example.com goes to sub.example.com rather than example.com when
+# both are zones. A zone that is not active, such as a subdomain zone still
+# being set up, is served by its parent, so a shorter active match wins over
+# it; with no active match at all, the longest match is used whatever its
+# status, as a single ZONE always was. Fails when nothing matches.
+zone_for() {
+    printf '%s\n' "$ZONE_TABLE" | awk -v name="${1#\*.}" '
+        NF >= 3 && (name == $1 || (length(name) > length($1) && substr(name, length(name) - length($1)) == "." $1)) {
+            if ($3 == "active") {
+                if (length($1) > active_len) { active_len = length($1); active = $1 " " $2 }
+            } else if (length($1) > other_len) {
+                other_len = length($1); other = $1 " " $2
+            }
+        }
+        END {
+            if (active != "") print active
+            else if (other != "") print other
+            else exit 1
+        }
+    '
+}
+
+# Works out which zone each record is in and fills ZONE_MAP. Returns 0 on
+# success, 1 if Cloudflare could not be reached, and 2 if a record is in no
+# zone the token can see.
+resolve_zones() {
+    local name zone seen missing=false
+    ZONE_MAP=''
+    list_zones || return
+    if [ -n "$ZONE" ] && [ -z "$ZONE_TABLE" ]; then
+        log error "zone $ZONE was not found; check ZONE, and that the token has Zone:Zone:Read for this zone"
+        return 2
+    fi
+    seen=$(printf '%s\n' "$ZONE_TABLE" | awk '
+        NF >= 3 { if (++n <= 20) s = s (n > 1 ? ", " : "") $1 }
+        END { if (n > 20) s = s " and " (n - 20) " more"; print s }
+    ')
+    for name in $RECORD_NAMES; do
+        if zone=$(zone_for "$name"); then
+            ZONE_MAP="$ZONE_MAP${ZONE_MAP:+$NL}$name $zone"
+            log debug "$name is in zone ${zone% *} (ID ${zone#* })"
+        else
+            log error "no zone was found for $name; check the name, and that the token has Zone:Zone:Read for its zone (the token can see ${seen:-no zone at all})"
+            missing=true
+        fi
+    done
+    if [ "$missing" = true ]; then
+        ZONE_MAP=''
+        return 2
+    fi
+    describe_zones
+}
+
+# Logs, for each zone, the records in it that are kept pointed at this host.
+describe_zones() {
+    local types='' zone names
+    [ "$IPV4" = false ] || types=A
+    [ "$IPV6" = false ] || types="${types:+$types and }AAAA"
+    for zone in $(printf '%s\n' "$ZONE_MAP" | awk 'NF == 3 && !seen[$2]++ { print $2 }'); do
+        names=$(printf '%s\n' "$ZONE_MAP" | awk -v zone="$zone" '$2 == zone { printf "%s%s", (n++ ? ", " : ""), $1 }')
+        log info "zone $zone: keeping $types records for $names pointed at this host"
+    done
 }
 
 # --- records ----------------------------------------------------------------
@@ -758,8 +862,8 @@ load_record() {
     if [ "$rc" -ne 0 ]; then
         if [ "$HTTP_STATUS" = 404 ]; then
             # The zone itself has gone, or was re-added under a new ID; the
-            # next check looks it up again.
-            ZONE_ID=''
+            # next check looks every zone up again.
+            ZONE_MAP=''
             RECORD_CACHE=''
             rc=1
         fi
@@ -914,13 +1018,13 @@ note_result() {
 # current, 1 when something failed that is worth retrying soon, and 2 when
 # something needs the user's attention.
 run_check() {
-    local name addr4='' addr6='' level=debug
+    local name zone addr4='' addr6='' level=debug
     CHECK_RESULT=0
     CHECK_UPDATED=0
     CHECK_UNCHANGED=0
 
-    if [ -z "$ZONE_ID" ]; then
-        resolve_zone || return
+    if [ -z "$ZONE_MAP" ]; then
+        resolve_zones || return
     fi
 
     if [ "$IPV4" = true ]; then
@@ -941,7 +1045,12 @@ run_check() {
     fi
 
     for name in $RECORD_NAMES; do
-        [ -n "$ZONE_ID" ] || break
+        # A zone that vanished mid-check clears the map; the next check
+        # looks the zones up again.
+        [ -n "$ZONE_MAP" ] || break
+        zone=$(printf '%s\n' "$ZONE_MAP" | awk -v name="$name" '$1 == name { print $2, $3; exit }')
+        ZONE_NAME=${zone% *}
+        ZONE_ID=${zone#* }
         if [ -n "$addr4" ]; then
             sync_record A "$name" "$addr4"
             note_result "$?"
@@ -964,13 +1073,13 @@ run_check() {
     return "$CHECK_RESULT"
 }
 
-# Verifies the token and finds the zone before the first check. Network
-# trouble is retried with backoff; a rejected token or missing zone is fatal,
-# since retrying cannot fix either.
+# Verifies the token and finds the zones before the first check. Network
+# trouble is retried with backoff; a rejected token or a record in no zone is
+# fatal, since retrying cannot fix either.
 startup() {
     local backoff=0 rc
     while :; do
-        verify_token && resolve_zone
+        verify_token && resolve_zones
         rc=$?
         [ "$rc" -ne 0 ] || return 0
         if [ "$rc" -eq 2 ]; then
