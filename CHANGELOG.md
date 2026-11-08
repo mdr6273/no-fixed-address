@@ -9,6 +9,7 @@ All notable changes to this project are documented here. The format follows
 ### Changed
 
 - The Unraid template and the Community Applications profile are now published from Richardson Resources' shared repository, [unraid-apps](https://github.com/mdr6273/unraid-apps). The copy under `unraid/` in this repository stays as a mirror for older links and for containers installed from them, and installs the same container.
+- The Unraid template's registry link is now `https://ghcr.io/mdr6273/no-fixed-address`, which opens the image's page.
 
 ## [1.1.0] - 2026-11-08
 
