@@ -9,6 +9,7 @@ All notable changes to this project are documented here. The format follows
 ### Added
 
 - Notifications. Set `NOTIFY_URL` (or `NOTIFY_URL_FILE`) to a webhook, and `NOTIFY_FORMAT` to `discord`, `slack`, `ntfy`, `gotify`, `apprise`, `json` or `text` (`auto` recognises Discord and Slack), and the container sends a message when records change, when something needs attention, and when it works again. Trouble that may pass is only reported once it has lasted as long as the health check allows, two hours, and a failed notification never holds up an update. The URL is treated as a secret, like the token. Off unless set.
+- Images for linux/arm/v7 and linux/arm/v6, for 32-bit Raspberry Pi OS and the Raspberry Pi Zero and 1. CI now runs every test against the image for each architecture, under emulation for the ARM ones, before anything is released.
 - Records in several zones. `ZONE` is now optional: without it, the container asks Cloudflare which zones the token can see and works out the zone of each name in `RECORDS` itself, so one container can keep names in several domains up to date. When two zones match, as with an Enterprise subdomain zone such as `sub.example.com`, the longer one wins. Setups with `ZONE` set work exactly as before, and the log mentions that it is now optional. `@` in `RECORDS` still needs `ZONE`, since without it there is no zone for it to stand for. A name in no zone the token can see stops the container at startup with `no zone was found for ...`, as an unknown `ZONE` always has.
 
 ### Changed

@@ -31,6 +31,7 @@ time on it.
 2. Open a pull request. `main` only accepts changes through pull requests whose checks pass.
 3. Once it's merged, tag the merge commit and push the tag: `git fetch origin && git tag -a v1.2.3 -m "No Fixed Address 1.2.3" origin/main && git push origin v1.2.3`. Release tags can't be moved or deleted afterwards, so check the commit first.
 
-The release workflow builds the image for amd64 and arm64, pushes it to
-GitHub Container Registry with version tags and `latest`, and creates the
-GitHub release from the matching changelog section.
+The release workflow first runs CI, which tests the image for amd64, arm64,
+arm/v7 and arm/v6 (the last three under emulation). It then builds the image
+for all four, pushes it to GitHub Container Registry with version tags and
+`latest`, and creates the GitHub release from the matching changelog section.

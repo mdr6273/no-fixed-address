@@ -30,9 +30,12 @@ body:
     id: arch
     attributes:
       label: CPU architecture
+      description: Running `uname -m` on the host prints it.
       options:
         - amd64 (x86_64)
         - arm64 (aarch64)
+        - arm/v7 (armv7l, such as 32-bit Raspberry Pi OS)
+        - arm/v6 (armv6l, such as a Raspberry Pi Zero or 1)
         - Not sure
     validations:
       required: true

@@ -4,8 +4,6 @@
 # release; Dependabot proposes updates to both.
 FROM alpine:3.24.3@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a
 
-ARG VERSION=dev
-
 # Package versions follow the pinned Alpine release, so a rebuild picks up its
 # security fixes without editing this file. tzdata makes TZ work for log
 # timestamps.
@@ -14,6 +12,10 @@ RUN apk add --no-cache curl jq tzdata \
     && adduser -S -D -H -u 10001 -G nofixedaddress -s /sbin/nologin nofixedaddress
 
 COPY --chmod=0755 src/nofixedaddress.sh /usr/local/bin/nofixedaddress
+
+# Declared after the RUN above, which would otherwise be rebuilt for every
+# version number instead of coming from the cache CI fills.
+ARG VERSION=dev
 
 ENV NFA_VERSION=${VERSION} \
     INTERVAL=86400 \

@@ -35,7 +35,7 @@ else:
 - **Least privilege.** One API token limited to the zones you use, a non-root container, and the token is never logged or put on a command line.
 - **Rides out outages.** Network and API failures are retried with backoff, from one minute up to an hour. It never crash-loops.
 - **Tells you when it's stuck.** A Docker health check turns unhealthy when updates stop succeeding, and an optional [notification](#notifications) to Discord, Slack, ntfy, Gotify, Apprise or any webhook says when an address changes or something needs attention.
-- **Small.** A POSIX shell script with curl and jq on Alpine, for amd64 and arm64.
+- **Small.** A POSIX shell script with curl and jq on Alpine, for amd64, arm64 and 32-bit ARM (v7 and v6), so it runs on any Raspberry Pi.
 
 ## How it works
 

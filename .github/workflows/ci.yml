@@ -38,36 +38,47 @@ jobs:
       - name: End-to-end tests
         run: sh tests/e2e.sh
 
-  image:
-    name: Image
+  # One job per architecture the image is published for, so a breakage on one
+  # shows up as its own check. On the arm legs everything inside the image
+  # runs under QEMU; the mock API and the test scripts stay native.
+  image-platform:
+    name: Image (${{ matrix.platform }})
     runs-on: ubuntu-24.04
+    # Emulated legs take a few minutes; a hang must not hold the run for the
+    # default six hours.
+    timeout-minutes: 20
+    strategy:
+      # Every leg finishes, so a failure shows which architectures it affects.
+      fail-fast: false
+      matrix:
+        platform: [linux/amd64, linux/arm64, linux/arm/v7, linux/arm/v6]
+    env:
+      # tests/e2e.sh and the steps below pass this to docker run, which also
+      # makes Docker refuse an image loaded for another platform.
+      NFA_PLATFORM: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
-      # Catches architecture-specific breakage before a release tag does.
-      - name: Build for amd64 and arm64
+      # One cache scope per platform: legs writing the same scope at once
+      # would overwrite each other's layers.
+      - name: Build
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Build for testing
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
-        with:
-          context: .
+          platforms: ${{ matrix.platform }}
           load: true
           tags: nofixedaddress:ci
           build-args: VERSION=ci
-          cache-from: type=gha
+          cache-from: type=gha,scope=${{ matrix.platform }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.platform }}
 
       - name: Unit tests under busybox ash
         run: >-
-          docker run --rm --entrypoint sh -v "$PWD/tests:/tests:ro"
-          -e NFA_SCRIPT=/usr/local/bin/nofixedaddress nofixedaddress:ci /tests/run.sh
+          docker run --rm --platform "$NFA_PLATFORM" --entrypoint sh
+          -v "$PWD/tests:/tests:ro" -e NFA_SCRIPT=/usr/local/bin/nofixedaddress
+          nofixedaddress:ci /tests/run.sh
 
       - name: End-to-end tests against the image
         run: sh tests/e2e.sh
@@ -75,4 +86,16 @@ jobs:
           NFA_IMAGE: nofixedaddress:ci
 
       - name: Runs as a non-root user
-        run: test "$(docker run --rm --entrypoint id nofixedaddress:ci -u)" = 10001
+        run: test "$(docker run --rm --platform "$NFA_PLATFORM" --entrypoint id nofixedaddress:ci -u)" = 10001
+
+  # The ruleset on main requires a check named exactly "Image". This is it:
+  # green only when every architecture above passed.
+  image:
+    name: Image
+    needs: image-platform
+    # Runs after failed legs too, so the check goes red rather than missing.
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Every architecture passed
+        run: test "${{ needs.image-platform.result }}" = success
