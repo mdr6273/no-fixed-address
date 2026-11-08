@@ -6,10 +6,14 @@ path can be exercised offline, without a real token. Responses use
 Cloudflare's JSON envelope and error codes, and writes are validated the way
 the real API validates them, so a malformed request fails here too.
 
+It can hold several zones (--zone, repeated); each record belongs to the
+longest zone its name is in, as with a subdomain zone on Cloudflare. Zone
+listings are paged like the real API, at most --max-per-page per page.
+
 Besides the API under /client/v4 it serves:
 
   GET  /trace                         an ip= line, like 1.1.1.1/cdn-cgi/trace
-  GET  /_mock/state                   one line per record, then the write count
+  GET  /_mock/state                   one line per record (zone first), then the write count
   POST /_mock/ip?value=ADDR           change the address /trace reports
   POST /_mock/delete?type=T&name=N    delete a record behind the updater's back
   POST /_mock/fail?count=N&status=S   answer the next N API calls with status S
@@ -29,23 +33,32 @@ WRITABLE_FIELDS = {"type", "name", "content", "proxied", "ttl", "comment"}
 
 
 class State:
-    def __init__(self, token, account_token, zone, ip):
+    def __init__(self, token, account_token, zones, ip, max_per_page):
         self.lock = threading.Lock()
         self.token = token
         self.account_token = account_token
         self.account = {"id": uuid.uuid4().hex, "name": "Example account"}
-        self.zone = {"id": uuid.uuid4().hex, "name": zone, "status": "active", "account": self.account}
+        self.zones = {}
+        for name in zones:
+            zid = uuid.uuid4().hex
+            self.zones[zid] = {"id": zid, "name": name, "status": "active", "account": self.account}
+        self.max_per_page = max_per_page
         self.records = {}
         self.ip = ip
         self.writes = 0
         self.failures = []
 
-    def add(self, rtype, name, content, proxied=False, ttl=1, comment=None):
+    def zone_for(self, name):
+        """The longest zone that name is in, or None."""
+        matches = [z for z in self.zones.values() if name == z["name"] or name.endswith("." + z["name"])]
+        return max(matches, key=lambda z: len(z["name"]), default=None)
+
+    def add(self, zone, rtype, name, content, proxied=False, ttl=1, comment=None):
         rid = uuid.uuid4().hex
         self.records[rid] = {
             "id": rid,
-            "zone_id": self.zone["id"],
-            "zone_name": self.zone["name"],
+            "zone_id": zone["id"],
+            "zone_name": zone["name"],
             "name": name,
             "type": rtype,
             "content": content,
@@ -157,7 +170,8 @@ class Handler(BaseHTTPRequestHandler):
         st = self.state
         if method == "GET" and action == "state":
             lines = [
-                f"{r['type']} {r['name']} {r['content']} proxied={str(r['proxied']).lower()} ttl={r['ttl']}"
+                f"{r['zone_name']} {r['type']} {r['name']} {r['content']} "
+                f"proxied={str(r['proxied']).lower()} ttl={r['ttl']}"
                 for r in sorted(st.records.values(), key=lambda r: (r["name"], r["type"]))
             ]
             lines.append(f"writes {st.writes}")
@@ -201,19 +215,31 @@ class Handler(BaseHTTPRequestHandler):
             raise ApiError(403, 10000, "Authentication error")
 
         if parts == ["zones"] and method == "GET":
-            zones = [st.zone] if query.get("name", st.zone["name"]) == st.zone["name"] else []
-            return self.ok(zones, info={"page": 1, "per_page": 20, "count": len(zones), "total_count": len(zones)})
+            zones = sorted(st.zones.values(), key=lambda z: z["name"])
+            if "name" in query:
+                zones = [z for z in zones if z["name"] == query["name"]]
+            try:
+                per_page = max(1, min(int(query.get("per_page", "20")), st.max_per_page))
+                page = max(1, int(query.get("page", "1")))
+            except ValueError:
+                raise ApiError(400, 1001, "Invalid paging parameters.") from None
+            chunk = zones[(page - 1) * per_page:page * per_page]
+            total_pages = -(-len(zones) // per_page)
+            return self.ok(chunk, info={"page": page, "per_page": per_page, "count": len(chunk),
+                                        "total_count": len(zones), "total_pages": total_pages})
 
         if len(parts) < 3 or parts[0] != "zones" or parts[2] != "dns_records" or len(parts) > 4:
             raise ApiError(404, 7000, "No route for that URI")
-        if parts[1] != st.zone["id"]:
+        zone = st.zones.get(parts[1])
+        if zone is None:
             raise ApiError(404, 7003, f"Could not route to /zones/{parts[1]}, perhaps your object identifier is invalid?")
 
         if len(parts) == 3:
             if method == "GET":
                 found = [
                     r for r in st.records.values()
-                    if query.get("type", r["type"]) == r["type"] and query.get("name", r["name"]) == r["name"]
+                    if r["zone_id"] == zone["id"]
+                    and query.get("type", r["type"]) == r["type"] and query.get("name", r["name"]) == r["name"]
                 ]
                 return self.ok(found, info={"page": 1, "per_page": 100, "count": len(found), "total_count": len(found)})
             if method == "POST":
@@ -224,16 +250,16 @@ class Handler(BaseHTTPRequestHandler):
                 candidate = {"proxied": False, "ttl": 1, **body}
                 validate_record(candidate)
                 name = candidate.get("name", "")
-                if name != st.zone["name"] and not name.endswith("." + st.zone["name"]):
+                if name != zone["name"] and not name.endswith("." + zone["name"]):
                     raise ApiError(400, 9007, "Name is not within the zone.")
                 st.writes += 1
-                record = st.add(candidate["type"], name, candidate["content"], candidate["proxied"],
+                record = st.add(zone, candidate["type"], name, candidate["content"], candidate["proxied"],
                                 candidate["ttl"], candidate.get("comment"))
                 return self.ok(record)
             raise ApiError(405, 10405, "Method not allowed")
 
         record = st.records.get(parts[3])
-        if record is None:
+        if record is None or record["zone_id"] != zone["id"]:
             raise ApiError(404, 81044, "Record does not exist.")
         if method == "GET":
             return self.ok(record)
@@ -263,19 +289,25 @@ def main():
     parser.add_argument("--port-file", help="write the port here once the server is listening")
     parser.add_argument("--token", required=True, help="a user API token to accept")
     parser.add_argument("--account-token", help="an account-owned API token to accept")
-    parser.add_argument("--zone", default="example.com")
+    parser.add_argument("--zone", action="append", help="a zone the tokens can see; may be repeated "
+                        "(default: example.com)")
+    parser.add_argument("--max-per-page", type=int, default=50,
+                        help="the most zones a listing returns per page (the real API allows 50)")
     parser.add_argument("--ip", default="5.6.7.8", help="address reported by /trace")
     parser.add_argument("--record", action="append", default=[], metavar="TYPE:NAME:CONTENT[:proxied]",
-                        help="seed a record; may be repeated")
+                        help="seed a record in the zone it belongs to; may be repeated")
     args = parser.parse_args()
 
-    state = State(args.token, args.account_token, args.zone, args.ip)
+    state = State(args.token, args.account_token, args.zone or ["example.com"], args.ip, args.max_per_page)
     for spec in args.record:
         rtype, name, content = spec.split(":", 2)
         proxied = content.endswith(":proxied")
         if proxied:
             content = content[: -len(":proxied")]
-        state.add(rtype, name, content, proxied=proxied, ttl=300)
+        zone = state.zone_for(name)
+        if zone is None:
+            parser.error(f"--record {spec}: {name} is in none of the zones")
+        state.add(zone, rtype, name, content, proxied=proxied, ttl=300)
 
     Handler.state = state
     server = ThreadingHTTPServer((args.host, args.port), Handler)

@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Records in several zones. `ZONE` is now optional: without it, the container asks Cloudflare which zones the token can see and works out the zone of each name in `RECORDS` itself, so one container can keep names in several domains up to date. When two zones match, as with an Enterprise subdomain zone such as `sub.example.com`, the longer one wins. Setups with `ZONE` set work exactly as before, and the log mentions that it is now optional. `@` in `RECORDS` still needs `ZONE`, since without it there is no zone for it to stand for. A name in no zone the token can see stops the container at startup with `no zone was found for ...`, as an unknown `ZONE` always has.
+
+### Changed
+
+- The `zone example.com: keeping A records for ...` line is now logged after the token is verified, once per zone.
+
 ## [1.0.0] - 2026-11-07
 
 The first stable release, after running on real hardware through restarts, updates and a change of public IP address. The container works exactly as in 0.0.3.

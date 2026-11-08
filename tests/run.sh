@@ -1,7 +1,7 @@
 #!/bin/sh
 # Offline tests for the parts of nofixedaddress.sh that need no network:
 # address validation and normalisation, configuration parsing, backoff, the
-# record ID cache and the health check.
+# record ID cache, matching records to zones and the health check.
 #
 #   sh tests/run.sh
 #
@@ -266,7 +266,8 @@ expect_fail "token and token file together are an error" \
 # Zone and records.
 expect_eq "zone is lowercased and loses its trailing dot" example.com \
     "$(config "$TOKEN" 'ZONE= Example.COM. ' "$RECS" -- show ZONE)"
-expect_fail "missing zone is an error" config "$TOKEN" "$RECS"
+expect_ok "missing zone is allowed" config "$TOKEN" "$RECS"
+expect_eq "blank zone stays blank" '' "$(config "$TOKEN" 'ZONE= ' "$RECS" -- show ZONE)"
 expect_fail "single-label zone is an error" config "$TOKEN" ZONE=localhost RECORDS=localhost
 expect_fail "wildcard zone is an error" config "$TOKEN" 'ZONE=*.example.com' "$RECS"
 expect_eq "records are trimmed, lowercased and de-duplicated" \
@@ -280,6 +281,23 @@ expect_fail "record in another zone is an error" config "$TOKEN" "$ZONE_ARG" REC
 expect_fail "record that only ends with the zone name is an error" \
     config "$TOKEN" "$ZONE_ARG" RECORDS=notexample.com
 expect_fail "record that is a URL is an error" config "$TOKEN" "$ZONE_ARG" RECORDS=https://home.example.com
+
+# Records without ZONE: the zone of each is found when the container starts.
+expect_eq "records in several zones are accepted without a zone" \
+    'home.example.com vpn.example.net *.example.org' \
+    "$(config "$TOKEN" 'RECORDS=home.example.com,vpn.example.net,*.example.org,Home.example.com' -- show RECORD_NAMES)"
+expect_fail "@ without a zone is an error" config "$TOKEN" RECORDS=@
+expect_ok "@ without a zone says to write the name in full" grep -q "'@' needs ZONE" "$TMP/config.log"
+expect_fail "single-label record without a zone is an error" config "$TOKEN" RECORDS=home
+expect_ok "single-label record without a zone is explained" \
+    grep -q "'home' is not a full name like home.example.com" "$TMP/config.log"
+expect_fail "wildcard top-level domain without a zone is an error" config "$TOKEN" 'RECORDS=*.com'
+describes() {
+    describe_config 2>&1 | grep -q "$1"
+}
+expect_ok "a set ZONE is described as optional" \
+    config "$TOKEN" "$ZONE_ARG" "$RECS" -- describes 'ZONE is optional'
+expect_fail "without ZONE nothing is said about it" config "$TOKEN" "$RECS" -- describes 'ZONE is optional'
 
 # The names used before 0.0.3.
 expect_fail "old CF_ZONE name is an error" config "$TOKEN" "$ZONE_ARG" "$RECS" CF_ZONE=example.com
@@ -340,7 +358,7 @@ expect_eq "API URL loses its trailing slash" http://127.0.0.1:8080/client/v4 \
 expect_fail "API URL without a scheme is an error" config "$TOKEN" "$ZONE_ARG" "$RECS" CF_API_URL=api.cloudflare.com
 
 config RECORDS=home.example.com INTERVAL=abc TTL=7 >/dev/null 2>&1
-expect_eq "every config problem is reported at once" 4 "$(grep -c 'config:' "$TMP/config.log")"
+expect_eq "every config problem is reported at once" 3 "$(grep -c 'config:' "$TMP/config.log")"
 
 # --- logging ----------------------------------------------------------------
 
@@ -379,6 +397,40 @@ expect_eq "cache keeps the other entries" 'id2 id3' \
     "$(cache_get AAAA home.example.com) $(cache_get A vpn.example.com)"
 expect_eq "cache misses unknown names" '' "$(cache_get A '*.example.com')"
 RECORD_CACHE=''
+
+# --- zone matching ----------------------------------------------------------
+
+ZONE_TABLE="example.com id1 active
+sub.example.com id2 active
+example.co.uk id3 active
+pending.example.com id4 pending
+example.net id5 pending"
+expect_eq "a record is matched to its zone" 'example.com id1' "$(zone_for home.example.com)"
+expect_eq "the zone apex is in the zone" 'example.com id1' "$(zone_for example.com)"
+expect_eq "the longest matching zone wins" 'sub.example.com id2' "$(zone_for host.sub.example.com)"
+expect_eq "a subdomain zone apex is in that zone" 'sub.example.com id2' "$(zone_for sub.example.com)"
+expect_eq "zones match whole labels only" 'example.com id1' "$(zone_for notsub.example.com)"
+expect_eq "a leading wildcard is ignored" 'sub.example.com id2' "$(zone_for '*.sub.example.com')"
+expect_eq "two-part endings such as .co.uk work" 'example.co.uk id3' "$(zone_for www.example.co.uk)"
+expect_eq "an active parent beats a pending subdomain zone" 'example.com id1' \
+    "$(zone_for host.pending.example.com)"
+expect_eq "a pending zone is used when nothing else matches" 'example.net id5' "$(zone_for home.example.net)"
+expect_fail "a record in no zone has no match" zone_for home.example.org
+expect_fail "a zone name inside a label is no match" zone_for notexample.com
+expect_fail "a bare top-level domain has no match" zone_for com
+ZONE_TABLE=''
+expect_fail "no zones means no match" zone_for home.example.com
+
+ZONE_MAP="home.example.com example.com id1
+host.sub.example.com sub.example.com id2
+vpn.example.com example.com id1"
+expect_eq "zones are described with their records" \
+    "zone example.com: keeping A records for home.example.com, vpn.example.com pointed at this host${NL}zone sub.example.com: keeping A records for host.sub.example.com pointed at this host" \
+    "$(IPV4=true; IPV6=false; describe_zones | sed 's/^[^ ]* [a-z]* *//')"
+expect_eq "both address families are described" \
+    'zone sub.example.com: keeping A and AAAA records for host.sub.example.com pointed at this host' \
+    "$(IPV4=true; IPV6=true; describe_zones | sed -n 's/^[^ ]* [a-z]* *//; 2p')"
+ZONE_MAP=''
 
 # --- health check -----------------------------------------------------------
 
