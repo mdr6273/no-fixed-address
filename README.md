@@ -34,7 +34,7 @@ else:
 - **Leaves your settings alone.** Proxy status and TTL are preserved unless you ask it to manage them.
 - **Least privilege.** One API token limited to the zones you use, a non-root container, and the token is never logged or put on a command line.
 - **Rides out outages.** Network and API failures are retried with backoff, from one minute up to an hour. It never crash-loops.
-- **Tells you when it's stuck.** A Docker health check turns unhealthy when updates stop succeeding.
+- **Tells you when it's stuck.** A Docker health check turns unhealthy when updates stop succeeding, and an optional [notification](#notifications) to Discord, Slack, ntfy, Gotify, Apprise or any webhook says when an address changes or something needs attention.
 - **Small.** A POSIX shell script with curl and jq on Alpine, for amd64 and arm64.
 
 ## How it works
@@ -244,6 +244,9 @@ Each release is published under several tags:
 | `DRY_RUN` | `false` | Log what would change without changing anything. |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error`. |
 | `TZ` | `UTC` | Time zone for log timestamps, such as `Europe/London`. |
+| `NOTIFY_URL` | *unset* | A webhook to [notify](#notifications) when records change or something goes wrong. Unset, nothing is sent. |
+| `NOTIFY_URL_FILE` | | Path to a file containing the webhook URL. Use instead of `NOTIFY_URL`, not as well. |
+| `NOTIFY_FORMAT` | `auto` | `discord`, `slack`, `ntfy`, `gotify`, `apprise`, `json` or `text`. `auto` recognises Discord and Slack webhook URLs; for anything else, say which. |
 
 Booleans accept `true`/`false`, `yes`/`no`, `on`/`off` and `1`/`0`. A
 variable set to an empty value counts as unset, which is how Unraid passes
@@ -325,11 +328,41 @@ The check writes a small timestamp file under `/tmp`. If you run the container
 with a read-only root filesystem, mount a tmpfs there (`--tmpfs /tmp`), as the
 Compose example does.
 
+## Notifications
+
+Set `NOTIFY_URL` to a webhook and the container sends a short message when:
+
+- **records change:** one message per check, listing the same lines as the log, such as `home.example.com A 1.2.3.4 -> 5.6.7.8`. With `DRY_RUN=true` the lines start with `[dry-run]`, so a dry run is also a test of your notifications.
+- **something needs attention:** a problem that retrying can't fix, such as a missing record or permission, is reported at once. Trouble that may pass, such as a network outage, is reported only once it has lasted two hours, which is when the [health check](#health-check) turns unhealthy, so a brief outage never wakes you up. The container also sends a message before it stops, for example after Cloudflare rejects the token.
+- **it's working again:** one message after a problem was reported, such as `working again (IPv4 5.6.7.8)`.
+
+Nothing is sent on a normal start or when nothing has changed. Each message is
+sent once, with a 10-second limit, and a webhook that fails only produces a
+warning in the log: it never holds up an update.
+
+| Service | `NOTIFY_FORMAT` | Where the URL comes from |
+| --- | --- | --- |
+| Discord | `discord` (or `auto`) | Channel settings → **Integrations** → **Webhooks** → **New Webhook** → **Copy Webhook URL** |
+| Slack | `slack` (or `auto`) | An app with **Incoming Webhooks** turned on → **Add New Webhook to Workspace** |
+| [ntfy](https://ntfy.sh/) | `ntfy` | Your topic, such as `https://ntfy.sh/your-secret-topic` or a server of your own. For a protected topic, add the login as `https://user:password@ntfy.example.com/topic`, or an access token as `?auth=...` |
+| [Gotify](https://gotify.net/) | `gotify` | `https://gotify.example.com/message?token=...`, with the token of an application created under **Apps** |
+| [Apprise API](https://github.com/caronc/apprise-api) | `apprise` | `https://apprise.example.com/notify/KEY` for a saved configuration. Apprise forwards to over 100 services, including email, Telegram, Pushover and Matrix |
+| Anything else | `json` | Receives `{"title", "message", "event", "changes"}`, where `event` is `updated`, `failing` or `recovered` and `changes` lists the changed records. Works with Home Assistant and n8n webhooks |
+| Anything else | `text` | Receives the message as plain text |
+
+Webhook URLs contain a secret, so the URL is treated like the API token: it is
+never logged (only its host is, such as `notifications: discord via
+discord.com`), and it reaches curl on standard input rather than its command
+line. Like the token, it does show in `docker inspect`; use `NOTIFY_URL_FILE`
+to avoid that. Use an `https://` URL: plain `http://` works but is warned
+about, because anyone on the network path could read the messages and the
+secret.
+
 ## Troubleshooting
 
 Start with the log (`docker logs nofixedaddress`, or the log icon on Unraid).
-For more detail, restart with `LOG_LEVEL=debug`. The token is never logged at
-any level.
+For more detail, restart with `LOG_LEVEL=debug`. The token and the
+notification URL are never logged at any level.
 
 #### `Cloudflare rejected the API token`
 
@@ -406,6 +439,20 @@ the usual `HTTPS_PROXY` variable; curl picks it up. You can also point
 Cloudflare always uses automatic TTL for proxied records, so `TTL` only
 applies to records that aren't proxied.
 
+#### `NOTIFY_FORMAT=auto only recognises Discord and Slack webhooks`
+
+`auto` can only tell Discord and Slack apart by their addresses. For any
+other service, set `NOTIFY_FORMAT` to say which, as in the table under
+[Notifications](#notifications).
+
+#### `notification to ntfy.example.com failed: HTTP 404`
+
+The webhook answered with an error. 404 usually means the URL is incomplete
+or the webhook was deleted, and 401 or 403 that its token or password is
+wrong. Notifications never affect updates, so the container carries on either
+way. Check the URL, then test it with `DRY_RUN=true`, which sends a message on
+the first check.
+
 #### `HTTP 429`
 
 Cloudflare is rate limiting the token. The container backs off and retries on
@@ -424,6 +471,7 @@ restart policy keeps restarting it until the setting is fixed.
 - The container runs as an unprivileged user (uid 10001), needs no capabilities, and works with a read-only root filesystem plus a tmpfs at `/tmp`.
 - The token is never logged, and reaches curl on standard input rather than its command line. The script removes it from its own environment before it starts curl or jq. A token passed as `CF_API_TOKEN` still stays in the container's configuration, where `docker inspect`, `docker exec` sessions and the health check can see it. Use `CF_API_TOKEN_FILE` to avoid that.
 - Addresses from the lookup services are validated before use, and private, loopback and reserved ranges are refused.
+- The notification URL gets the same care as the token: it's never logged, and reaches curl on standard input. Messages contain record names, addresses and error messages, never the token.
 
 To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
@@ -437,8 +485,9 @@ docker build -t nofixedaddress:dev .
 NFA_IMAGE=nofixedaddress:dev sh tests/e2e.sh  # the same tests against the image
 ```
 
-The end-to-end tests need `curl`, `jq` and `python3`, and use the mock in
-[tests/mock_cf_api.py](tests/mock_cf_api.py) instead of the real API. See
+The unit tests need `jq`, and the end-to-end tests `curl`, `jq` and `python3`.
+They use the mock in [tests/mock_cf_api.py](tests/mock_cf_api.py) instead of
+the real API and real webhooks. See
 [CONTRIBUTING.md](CONTRIBUTING.md) for more.
 
 ## License

@@ -13,10 +13,14 @@ listings are paged like the real API, at most --max-per-page per page.
 Besides the API under /client/v4 it serves:
 
   GET  /trace                         an ip= line, like 1.1.1.1/cdn-cgi/trace
+  POST /notify/ANYTHING               a webhook: records the request and answers 200
   GET  /_mock/state                   one line per record (zone first), then the write count
+  GET  /_mock/notifications           one line per webhook request, in the order received
   POST /_mock/ip?value=ADDR           change the address /trace reports
+  POST /_mock/add?type=T&name=N&content=C     add a record behind the updater's back
   POST /_mock/delete?type=T&name=N    delete a record behind the updater's back
   POST /_mock/fail?count=N&status=S   answer the next N API calls with status S
+  POST /_mock/notify-fail?count=N&status=S    answer the next N webhook requests with status S
 """
 
 import argparse
@@ -47,6 +51,8 @@ class State:
         self.ip = ip
         self.writes = 0
         self.failures = []
+        self.notifications = []
+        self.notify_failures = []
 
     def zone_for(self, name):
         """The longest zone that name is in, or None."""
@@ -150,6 +156,9 @@ class Handler(BaseHTTPRequestHandler):
     def do_DELETE(self):
         self.route("DELETE")
 
+    def do_PUT(self):
+        self.route("PUT")
+
     def route(self, method):
         url = urlsplit(self.path)
         query = {k: v[-1] for k, v in parse_qs(url.query, keep_blank_values=True).items()}
@@ -157,6 +166,8 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 if url.path == "/trace" and method == "GET":
                     self.send_body(200, f"fl=1f1\nh=mock\nip={self.state.ip}\nts=0\nhttp=http/1.1\n", "text/plain")
+                elif url.path.startswith("/notify/"):
+                    self.sink(method, url.path)
                 elif url.path.startswith("/_mock/"):
                     self.control(method, url.path[len("/_mock/"):], query)
                 elif url.path.startswith(API_PREFIX):
@@ -165,6 +176,18 @@ class Handler(BaseHTTPRequestHandler):
                     self.fail(404, 7000, "No route for that URI")
             except ApiError as e:
                 self.fail(e.status, e.code, e.message)
+
+    def sink(self, method, path):
+        """Records a webhook request on one greppable line, even one it fails."""
+        st = self.state
+        length = int(self.headers.get("Content-Length") or 0)
+        body = self.rfile.read(length).decode("utf-8", "replace")
+        status = st.notify_failures.pop(0) if st.notify_failures else 200
+        ctype = (self.headers.get("Content-Type") or "-").split(";")[0].strip()
+        extra = " ".join(f"{h.lower()}={self.headers.get(h) or '-'}" for h in ("Title", "Tags", "Priority"))
+        body = body.replace("\r", "\\r").replace("\n", "\\n")
+        st.notifications.append(f"{status} {method} {path} {ctype} {extra} body={body}")
+        self.send_body(status, "ok\n" if status < 400 else "simulated failure\n", "text/plain")
 
     def control(self, method, action, query):
         st = self.state
@@ -176,8 +199,20 @@ class Handler(BaseHTTPRequestHandler):
             ]
             lines.append(f"writes {st.writes}")
             self.send_body(200, "\n".join(lines) + "\n", "text/plain")
+        elif method == "GET" and action == "notifications":
+            self.send_body(200, "".join(line + "\n" for line in st.notifications), "text/plain")
         elif method == "POST" and action == "ip":
             st.ip = query["value"]
+            self.send_body(200, "ok\n", "text/plain")
+        elif method == "POST" and action == "add":
+            zone = st.zone_for(query["name"])
+            if zone is None:
+                self.send_body(400, "not in any zone\n", "text/plain")
+                return
+            st.add(zone, query["type"], query["name"], query["content"], ttl=300)
+            self.send_body(200, "added\n", "text/plain")
+        elif method == "POST" and action == "notify-fail":
+            st.notify_failures.extend([int(query.get("status", "500"))] * int(query.get("count", "1")))
             self.send_body(200, "ok\n", "text/plain")
         elif method == "POST" and action == "delete":
             doomed = [rid for rid, r in st.records.items() if r["type"] == query["type"] and r["name"] == query["name"]]

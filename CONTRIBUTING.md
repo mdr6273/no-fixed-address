@@ -13,14 +13,14 @@ time on it.
   shellcheck src/nofixedaddress.sh tests/*.sh
   ```
 
-- **Run the tests, and add tests for behaviour you change.** The unit tests need nothing but a shell; the end-to-end tests also need curl, jq and python3 and run against a local mock of the Cloudflare API.
+- **Run the tests, and add tests for behaviour you change.** The unit tests need a shell and jq; the end-to-end tests also need curl and python3 and run against a local mock of the Cloudflare API, which also stands in for notification webhooks.
 
   ```sh
   sh tests/run.sh
   sh tests/e2e.sh
   ```
 
-- **Never log the API token** or anything derived from it.
+- **Never log the API token or the notification URL**, or anything derived from them. The notification URL's host is the one exception.
 - **Comments explain why**, not what the next line does.
 - **Commit messages** follow [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `docs:` and so on).
 - **User-visible changes** get a line in the Unreleased section of [CHANGELOG.md](CHANGELOG.md).
