@@ -23,7 +23,8 @@ Helpful details to include:
 - steps to reproduce it, and
 - a suggested fix, if you have one.
 
-Never include a real API token. A made-up one shows the problem just as well.
+Never include a real API token or webhook URL. A made-up one shows the problem
+just as well.
 
 You can expect an acknowledgement within a week. How quickly a fix follows
 depends on severity; you'll be kept informed, and credited in the release
@@ -33,8 +34,9 @@ notes unless you'd rather not be.
 
 Especially worth reporting:
 
-- any way the API token could leak: logs, process listings, the environment of
-  child processes, image layers or error messages;
+- any way the API token or the notification webhook URL could leak: logs,
+  process listings, the environment of child processes, image layers, error
+  messages or the notifications themselves;
 - any way to make the container write an address that did not come from a
   validated lookup, or change records it was not configured to manage.
 

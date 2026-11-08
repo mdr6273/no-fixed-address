@@ -48,6 +48,19 @@ ZONE_NAME=''
 ZONE_ID=''
 RECORD_CACHE=''
 ANNOUNCED=false
+# Notifications: the webhook URL (a secret, never exported or logged) and its
+# host, which is safe to log. A check's changes and problems are collected
+# for the message, along with the addresses it found.
+NOTIFY_TITLE='No Fixed Address'
+NFA_NOTIFY_URL=''
+NOTIFY_HOST=''
+CHECK_CHANGES=''
+CHECK_PROBLEMS=''
+CHECK_SUMMARY=''
+# When the current run of failed checks began, and the result a "failing"
+# message has been sent for (0 for none yet, otherwise 1 or 2).
+FAILING_SINCE=''
+NOTIFIED_FAILING=0
 
 # --- logging ----------------------------------------------------------------
 
@@ -60,6 +73,9 @@ log() {
         warn) rank=30 ;;
         *) rank=40 ;;
     esac
+    # Warnings and errors are also kept for the "failing" notification, so it
+    # says what the log says whatever LOG_LEVEL hides.
+    [ "$rank" -lt 30 ] || CHECK_PROBLEMS="$CHECK_PROBLEMS${CHECK_PROBLEMS:+$NL}$2"
     [ "$rank" -ge "$LOG_THRESHOLD" ] || return 0
     # Warnings and errors go to stderr so anything that separates the two
     # streams can surface them.
@@ -179,10 +195,19 @@ url_list_setting() {
     done
 }
 
+# Prints the host of URL $1 in lowercase, without the scheme, user name,
+# password, port, path or query, so it can be logged for a URL that holds a
+# secret.
+url_host() {
+    printf '%s\n' "$1" |
+        sed -e 's|^[A-Za-z][A-Za-z0-9+.-]*://||' -e 's|[/?#].*||' -e 's|.*@||' -e 's|:[0-9]*$||' |
+        awk '{ print tolower($0) }'
+}
+
 # Reads and validates every setting, reporting all problems before giving up
 # so they can be fixed in one pass. Returns 2 if anything is wrong.
 load_config() {
-    local raw name entries old
+    local raw name entries old notify_given
     CONFIG_ERRORS=0
 
     LOG_LEVEL=${LOG_LEVEL:-}
@@ -225,6 +250,84 @@ load_config() {
             NFA_TOKEN=''
             ;;
     esac
+
+    # A webhook URL is a credential too, so it gets the token's treatment:
+    # copied into a variable that is never exported, the original unset, and
+    # only its host name ever logged.
+    unset NFA_NOTIFY_URL
+    NFA_NOTIFY_URL=''
+    NOTIFY_HOST=''
+    notify_given=${NOTIFY_URL:-}${NOTIFY_URL_FILE:-}
+    if [ -n "${NOTIFY_URL:-}" ] && [ -n "${NOTIFY_URL_FILE:-}" ]; then
+        config_error "set NOTIFY_URL or NOTIFY_URL_FILE, not both"
+    elif [ -n "${NOTIFY_URL_FILE:-}" ]; then
+        if [ -f "$NOTIFY_URL_FILE" ] && [ -r "$NOTIFY_URL_FILE" ]; then
+            IFS= read -r NFA_NOTIFY_URL <"$NOTIFY_URL_FILE" || :
+            trim_var NFA_NOTIFY_URL
+            [ -n "$NFA_NOTIFY_URL" ] || config_error "NOTIFY_URL_FILE $NOTIFY_URL_FILE is empty"
+        else
+            config_error "NOTIFY_URL_FILE $NOTIFY_URL_FILE does not exist or is not readable by uid $(id -u)"
+        fi
+    else
+        NFA_NOTIFY_URL=${NOTIFY_URL:-}
+        trim_var NFA_NOTIFY_URL
+    fi
+    unset NOTIFY_URL
+
+    raw=${NOTIFY_FORMAT:-}
+    trim_var raw
+    NOTIFY_FORMAT=$(lower "${raw:-auto}")
+    case $NOTIFY_FORMAT in
+        auto | discord | slack | ntfy | gotify | apprise | json | text) ;;
+        *)
+            config_error "NOTIFY_FORMAT must be auto, discord, slack, ntfy, gotify, apprise, json or text, not '$raw'"
+            NOTIFY_FORMAT=auto
+            ;;
+    esac
+
+    if [ -n "$NFA_NOTIFY_URL" ]; then
+        # The URL reaches curl as a quoted config line, where a quote,
+        # backslash or line break would end it early.
+        case $NFA_NOTIFY_URL in
+            *'"'* | *\\* | *' '* | *"$TAB"* | *"$CR"* | *"$NL"*)
+                config_error "NOTIFY_URL contains characters a URL never has (quotes, spaces or line breaks); check how it was pasted"
+                NFA_NOTIFY_URL=''
+                ;;
+            https://?*) ;;
+            # Anyone on the network path can read the messages, and the
+            # secret in the URL, over plain http.
+            http://?*) log warn "NOTIFY_URL uses plain http, so anyone on the network path can read the notifications and the webhook's secret; use https" ;;
+            *)
+                config_error "NOTIFY_URL must be an http:// or https:// URL"
+                NFA_NOTIFY_URL=''
+                ;;
+        esac
+    fi
+    if [ -n "$NFA_NOTIFY_URL" ]; then
+        NOTIFY_HOST=$(url_host "$NFA_NOTIFY_URL")
+        case $NOTIFY_HOST in
+            \[*\]) ;;
+            # Also catches an unencoded ? or @ in a password, which would
+            # otherwise put part of the password in the log as the host.
+            '' | *[!a-z0-9._-]*)
+                config_error "NOTIFY_URL does not have a valid host name; percent-encode any special characters in a user name or password"
+                NFA_NOTIFY_URL=''
+                NOTIFY_HOST=''
+                ;;
+        esac
+    fi
+    if [ -n "$NFA_NOTIFY_URL" ] && [ "$NOTIFY_FORMAT" = auto ]; then
+        # ntfy, Gotify and Apprise are usually self-hosted, so only Discord
+        # and Slack can be recognised from the URL.
+        case $NOTIFY_HOST in
+            discord.com | *.discord.com | discordapp.com | *.discordapp.com) NOTIFY_FORMAT=discord ;;
+            hooks.slack.com) NOTIFY_FORMAT=slack ;;
+            *) config_error "NOTIFY_FORMAT=auto only recognises Discord and Slack webhooks, and NOTIFY_URL points at $NOTIFY_HOST; set NOTIFY_FORMAT to discord, slack, ntfy, gotify, apprise, json or text" ;;
+        esac
+    elif [ -z "$notify_given" ] && [ "$NOTIFY_FORMAT" != auto ]; then
+        log warn "NOTIFY_FORMAT=$NOTIFY_FORMAT has no effect without NOTIFY_URL"
+    fi
+    notify_given=''
 
     # Renamed in 0.0.3. Stopping with the new name beats "ZONE is required"
     # for a container that was set up before the rename.
@@ -334,6 +437,7 @@ describe_config() {
     [ -z "$ZONE" ] || log info "ZONE is optional since 1.1.0: without it, the zone of each record is found automatically"
     log info "checking every ${INTERVAL}s; proxied: ${PROXIED:-as is}, ttl: ${TTL:-as is}, create missing records: $CREATE_IF_MISSING"
     [ "$DRY_RUN" = false ] || log info "dry run: changes are logged but not applied"
+    [ -z "$NFA_NOTIFY_URL" ] || log info "notifications: $NOTIFY_FORMAT via $NOTIFY_HOST"
 }
 
 # --- addresses --------------------------------------------------------------
@@ -694,6 +798,152 @@ report_rejected_token() {
     log error "Cloudflare rejected the API token ($API_ERROR); check that it was copied completely and has not been deleted or expired"
 }
 
+# --- notifications ----------------------------------------------------------
+
+# notify_level KIND EVENT
+# How urgent EVENT is, in each service's terms: ntfy priority names and emoji
+# tags, Gotify priorities (4 is an ordinary notification, 8 a loud one) and
+# Apprise message types.
+notify_level() {
+    case $1:$2 in
+        ntfy:failing) printf high ;;
+        ntfy:*) printf default ;;
+        tag:updated) printf white_check_mark ;;
+        tag:failing) printf rotating_light ;;
+        tag:*) printf heavy_check_mark ;;
+        gotify:failing) printf 8 ;;
+        gotify:*) printf 4 ;;
+        apprise:failing) printf failure ;;
+        apprise:recovered) printf success ;;
+        apprise:*) printf info ;;
+    esac
+}
+
+# notify_body FORMAT EVENT MESSAGE
+# Prints the request body for a notification in FORMAT. EVENT is updated,
+# failing or recovered. JSON is always built by jq, never by pasting strings.
+notify_body() {
+    local format="$1" event="$2" message="$3"
+    case $format in
+        discord)
+            # Discord refuses messages over 2000 characters, and nothing here
+            # should ever ping anyone.
+            jq -cn --arg title "$NOTIFY_TITLE" --arg message "$message" '
+                {content: (if ($message | length) > 2000 then $message[:1997] + "..." else $message end),
+                 username: $title, allowed_mentions: {parse: []}}'
+            ;;
+        slack)
+            # Slack reads &, < and > as markup unless they are escaped, and
+            # every update line has a "->" in it.
+            jq -cn --arg title "$NOTIFY_TITLE" --arg message "$message" '
+                {text: ("\($title): \($message)" | gsub("&"; "&amp;") | gsub("<"; "&lt;") | gsub(">"; "&gt;"))}'
+            ;;
+        gotify)
+            jq -cn --arg title "$NOTIFY_TITLE" --arg message "$message" \
+                --argjson priority "$(notify_level gotify "$event")" \
+                '{title: $title, message: $message, priority: $priority}'
+            ;;
+        apprise)
+            jq -cn --arg title "$NOTIFY_TITLE" --arg message "$message" \
+                --arg type "$(notify_level apprise "$event")" \
+                '{title: $title, body: $message, type: $type, format: "text"}'
+            ;;
+        json)
+            jq -cn --arg title "$NOTIFY_TITLE" --arg message "$message" --arg event "$event" '
+                {title: $title, message: $message, event: $event,
+                 changes: (if $event == "updated" then ($message | split("\n") | map(select(. != ""))) else [] end)}'
+            ;;
+        ntfy) printf '%s' "$message" ;;
+        *) printf '%s: %s' "$NOTIFY_TITLE" "$message" ;;
+    esac
+}
+
+# notify EVENT MESSAGE
+# Sends one notification, if they are turned on. One attempt with a short
+# timeout and never more than a warning: a webhook that is down must not
+# hold up DNS updates or change a check's result.
+notify() {
+    local event="$1" message="$2" rc status detail
+    [ -n "$NFA_NOTIFY_URL" ] || return 0
+    # Files of its own, since $NFA_TMP/body may still hold the API response
+    # an error message is about to quote.
+    if ! notify_body "$NOTIFY_FORMAT" "$event" "$message" >"$NFA_TMP/notify-payload"; then
+        log warn "could not build the $event notification"
+        return 0
+    fi
+    set -- -sSg --proto =http,https --connect-timeout 10 --max-time 10 -X POST \
+        -A "$USER_AGENT" --max-filesize 65536 -o "$NFA_TMP/notify-body" -w '%{http_code}' \
+        --data-binary @"$NFA_TMP/notify-payload" --config -
+    case $NOTIFY_FORMAT in
+        ntfy)
+            set -- "$@" -H 'Content-Type: text/plain; charset=utf-8' -H "Title: $NOTIFY_TITLE" \
+                -H "Tags: $(notify_level tag "$event")" -H "Priority: $(notify_level ntfy "$event")"
+            ;;
+        text) set -- "$@" -H 'Content-Type: text/plain; charset=utf-8' ;;
+        *) set -- "$@" -H 'Content-Type: application/json' ;;
+    esac
+    : >"$NFA_TMP/notify-body"
+
+    # The URL reaches curl as a config line on stdin, like the API token, so
+    # the secret in it never appears in a process listing.
+    curl "$@" >"$NFA_TMP/notify-status" 2>"$NFA_TMP/notify-error" <<EOF &
+url = "$NFA_NOTIFY_URL"
+EOF
+    wait_child "$!"
+    rc=$?
+    if [ "$rc" -ne 0 ]; then
+        detail=$(first_line "$NFA_TMP/notify-error")
+        # curl names the host at most, but the secret must not depend on that.
+        case $detail in *"$NFA_NOTIFY_URL"*) detail='' ;; esac
+        log warn "notification to $NOTIFY_HOST failed: ${detail:-curl exited with status $rc}"
+        return 0
+    fi
+    status=''
+    IFS= read -r status <"$NFA_TMP/notify-status" || :
+    case $status in
+        2??) log debug "$event notification sent to $NOTIFY_HOST: HTTP $status" ;;
+        # The response body is not logged: some services echo the request,
+        # secret and all, in their error messages.
+        *) log warn "notification to $NOTIFY_HOST failed: HTTP ${status:-with no status}" ;;
+    esac
+    return 0
+}
+
+# Logs a change at info and keeps it for the "updated" notification.
+note_change() {
+    log info "$1"
+    CHECK_CHANGES="$CHECK_CHANGES${CHECK_CHANGES:+$NL}$1"
+}
+
+# check_failed RC NOW
+# Called after every failed check, and every failed attempt to start up.
+# Sends a "failing" message at most twice in a run of failures: at once when
+# retrying cannot help (RC 2), and for trouble that may pass (RC 1) only once
+# it has lasted HEALTH_GRACE, the moment the container's health check gives
+# up too. A run of failures begins at a scheduled check, INTERVAL after the
+# last success, so the two line up.
+check_failed() {
+    local rc="$1" now="$2" headline
+    [ -n "$FAILING_SINCE" ] || FAILING_SINCE=$now
+    if [ "$rc" -eq 2 ] && [ "$NOTIFIED_FAILING" -ne 2 ]; then
+        headline='needs attention:'
+    elif [ "$rc" -eq 1 ] && [ "$NOTIFIED_FAILING" -eq 0 ] && [ $((now - FAILING_SINCE)) -ge "$HEALTH_GRACE" ]; then
+        headline="still failing after $((HEALTH_GRACE / 3600)) hours:"
+    else
+        return 0
+    fi
+    NOTIFIED_FAILING=$rc
+    notify failing "$headline$NL$CHECK_PROBLEMS"
+}
+
+# Called after every successful check: says so once after a "failing" message.
+check_succeeded() {
+    FAILING_SINCE=''
+    [ "$NOTIFIED_FAILING" -ne 0 ] || return 0
+    NOTIFIED_FAILING=0
+    notify recovered "working again ($CHECK_SUMMARY)"
+}
+
 # --- zones ------------------------------------------------------------------
 
 # Fills ZONE_TABLE with the zones the token can see: only ZONE when it is
@@ -934,9 +1184,9 @@ update_record() {
         fi
     fi
 
-    [ -z "$new_content" ] || log info "$prefix$name $type $REC_CONTENT -> $new_content"
-    [ -z "$new_proxied" ] || log info "$prefix$name $type proxied $REC_PROXIED -> $new_proxied"
-    [ -z "$new_ttl" ] || log info "$prefix$name $type ttl $REC_TTL -> $new_ttl"
+    [ -z "$new_content" ] || note_change "$prefix$name $type $REC_CONTENT -> $new_content"
+    [ -z "$new_proxied" ] || note_change "$prefix$name $type proxied $REC_PROXIED -> $new_proxied"
+    [ -z "$new_ttl" ] || note_change "$prefix$name $type ttl $REC_TTL -> $new_ttl"
     CHECK_UPDATED=$((CHECK_UPDATED + 1))
     return 0
 }
@@ -949,7 +1199,7 @@ create_record() {
     fi
     [ "$proxied" = false ] || ttl=1
     if [ "$DRY_RUN" = true ]; then
-        log info "[dry-run] $name $type created with $ip"
+        note_change "[dry-run] $name $type created with $ip"
         CHECK_UPDATED=$((CHECK_UPDATED + 1))
         return 0
     fi
@@ -966,7 +1216,7 @@ create_record() {
     if read_record '.result' "$type" "$name"; then
         cache_put "$type" "$name" "$REC_ID"
     fi
-    log info "$name $type created with $ip"
+    note_change "$name $type created with $ip"
     CHECK_UPDATED=$((CHECK_UPDATED + 1))
 }
 
@@ -1022,6 +1272,9 @@ run_check() {
     CHECK_RESULT=0
     CHECK_UPDATED=0
     CHECK_UNCHANGED=0
+    CHECK_CHANGES=''
+    CHECK_PROBLEMS=''
+    CHECK_SUMMARY=''
 
     if [ -z "$ZONE_MAP" ]; then
         resolve_zones || return
@@ -1061,6 +1314,7 @@ run_check() {
         fi
     done
 
+    CHECK_SUMMARY="${addr4:+IPv4 $addr4}${addr4:+${addr6:+, }}${addr6:+IPv6 $addr6}"
     if [ "$CHECK_RESULT" -eq 0 ]; then
         # The first successful check is reported at info so a fresh install
         # visibly works; after that, only changes are worth the log space.
@@ -1068,7 +1322,7 @@ run_check() {
             level=info
             ANNOUNCED=true
         fi
-        log "$level" "check complete (${addr4:+IPv4 $addr4}${addr4:+${addr6:+, }}${addr6:+IPv6 $addr6}): $CHECK_UPDATED updated, $CHECK_UNCHANGED unchanged"
+        log "$level" "check complete ($CHECK_SUMMARY): $CHECK_UPDATED updated, $CHECK_UNCHANGED unchanged"
     fi
     return "$CHECK_RESULT"
 }
@@ -1079,13 +1333,17 @@ run_check() {
 startup() {
     local backoff=0 rc
     while :; do
+        CHECK_PROBLEMS=''
         verify_token && resolve_zones
         rc=$?
         [ "$rc" -ne 0 ] || return 0
         if [ "$rc" -eq 2 ]; then
+            # Otherwise the only sign of this is a stopped container.
+            notify failing "stopping:$NL$CHECK_PROBLEMS"
             log error "stopping: fix the problem above, then restart the container"
             exit 1
         fi
+        check_failed 1 "$(date +%s)"
         backoff=$(next_backoff "$backoff")
         log warn "retrying in ${backoff}s"
         sleep_for "$backoff"
@@ -1150,7 +1408,7 @@ cleanup() {
 }
 
 main() {
-    local backoff=0 delay
+    local backoff=0 delay rc now
     case ${1:-} in
         '') ;;
         healthcheck)
@@ -1182,24 +1440,34 @@ main() {
 
     while :; do
         run_check
-        case $? in
+        rc=$?
+        now=$(date +%s)
+        # The failing message goes out before the line below is logged, so
+        # it lists the problems rather than the retry.
+        case $rc in
             0)
                 backoff=0
                 delay=$INTERVAL
                 mark_success
+                check_succeeded
                 log debug "next check in ${delay}s"
                 ;;
             1)
                 backoff=$(next_backoff "$backoff")
                 delay=$backoff
+                check_failed 1 "$now"
                 log warn "check incomplete; retrying in ${delay}s"
                 ;;
             *)
                 backoff=0
                 delay=$INTERVAL
+                check_failed 2 "$now"
                 log error "check finished with problems that need attention; next check in ${delay}s"
                 ;;
         esac
+        # Whatever was written to Cloudflare is announced, even when another
+        # record failed in the same check.
+        [ -z "$CHECK_CHANGES" ] || notify updated "$CHECK_CHANGES"
         sleep_for "$delay"
     done
 }

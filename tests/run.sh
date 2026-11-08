@@ -1,9 +1,12 @@
 #!/bin/sh
 # Offline tests for the parts of nofixedaddress.sh that need no network:
 # address validation and normalisation, configuration parsing, backoff, the
-# record ID cache, matching records to zones and the health check.
+# record ID cache, matching records to zones, notification messages and when
+# they are sent, and the health check.
 #
 #   sh tests/run.sh
+#
+# Needs jq, which builds the notification messages.
 #
 # NFA_SCRIPT selects another copy of the script, such as the one installed in
 # the image, so the same tests can run under busybox ash:
@@ -71,7 +74,7 @@ config() {
     (
         unset CF_API_TOKEN CF_API_TOKEN_FILE CF_ZONE CF_RECORDS ZONE RECORDS INTERVAL IPV4 \
             IPV6 PROXIED TTL CREATE_IF_MISSING DRY_RUN LOG_LEVEL IPV4_SOURCES \
-            IPV6_SOURCES CF_API_URL STATE_DIR
+            IPV6_SOURCES CF_API_URL STATE_DIR NOTIFY_URL NOTIFY_URL_FILE NOTIFY_FORMAT
         while [ "$#" -gt 0 ] && [ "$1" != -- ]; do
             export "${1?}"
             shift
@@ -357,6 +360,71 @@ expect_eq "API URL loses its trailing slash" http://127.0.0.1:8080/client/v4 \
     "$(config "$TOKEN" "$ZONE_ARG" "$RECS" CF_API_URL=http://127.0.0.1:8080/client/v4/ -- show CF_API_URL)"
 expect_fail "API URL without a scheme is an error" config "$TOKEN" "$ZONE_ARG" "$RECS" CF_API_URL=api.cloudflare.com
 
+# Notifications.
+notify_setup() {
+    printf '%s %s %s' "${NFA_NOTIFY_URL:-none}" "$NOTIFY_FORMAT" "${NOTIFY_HOST:-none}"
+}
+DISCORD=NOTIFY_URL=https://discord.com/api/webhooks/123/abc-DEF_ghi
+SLACK_URL=https://hooks.slack.com/services/T0/B0/xyz
+expect_eq "notifications are off by default" 'none auto none' "$(config "$TOKEN" "$RECS" -- notify_setup)"
+expect_eq "a blank notification URL is off" 'none auto none' \
+    "$(config "$TOKEN" "$RECS" 'NOTIFY_URL= ' NOTIFY_FORMAT= -- notify_setup)"
+expect_eq "a Discord webhook is recognised" \
+    'https://discord.com/api/webhooks/123/abc-DEF_ghi discord discord.com' \
+    "$(config "$TOKEN" "$RECS" "$DISCORD" -- notify_setup)"
+for host in ptb.discord.com discordapp.com canary.discordapp.com; do
+    expect_eq "a webhook on $host is recognised as Discord" discord \
+        "$(config "$TOKEN" "$RECS" "NOTIFY_URL=https://$host/api/webhooks/1/x" -- show NOTIFY_FORMAT)"
+done
+expect_eq "a Slack webhook is recognised" slack \
+    "$(config "$TOKEN" "$RECS" "NOTIFY_URL=$SLACK_URL" -- show NOTIFY_FORMAT)"
+expect_fail "auto with an unrecognised host is an error" \
+    config "$TOKEN" "$RECS" NOTIFY_URL=https://ntfy.sh/secret-topic
+expect_ok "the error names the host" grep -q 'points at ntfy.sh;' "$TMP/config.log"
+expect_fail "the error leaves out the rest of the URL" grep -q secret-topic "$TMP/config.log"
+for f in discord slack ntfy gotify apprise json text; do
+    expect_eq "NOTIFY_FORMAT=$f is accepted" "$f" \
+        "$(config "$TOKEN" "$RECS" NOTIFY_URL=https://notify.example/x "NOTIFY_FORMAT=$f" -- show NOTIFY_FORMAT)"
+done
+expect_eq "NOTIFY_FORMAT is trimmed and lowercased" ntfy \
+    "$(config "$TOKEN" "$RECS" NOTIFY_URL=https://notify.example/x 'NOTIFY_FORMAT= Ntfy ' -- show NOTIFY_FORMAT)"
+expect_fail "an unknown NOTIFY_FORMAT is an error" \
+    config "$TOKEN" "$RECS" NOTIFY_URL=https://notify.example/x NOTIFY_FORMAT=email
+config "$TOKEN" "$RECS" NOTIFY_FORMAT=ntfy >/dev/null 2>&1
+expect_ok "NOTIFY_FORMAT without a URL is warned about" grep -q 'has no effect without NOTIFY_URL' "$TMP/config.log"
+
+printf '%s\r\n' "$SLACK_URL" >"$TMP/notify-url"
+: >"$TMP/notify-url-empty"
+expect_eq "the URL can come from a file" "$SLACK_URL" \
+    "$(config "$TOKEN" "$RECS" "NOTIFY_URL_FILE=$TMP/notify-url" -- show NFA_NOTIFY_URL)"
+expect_fail "a URL and a URL file together are an error" \
+    config "$TOKEN" "$RECS" "$DISCORD" "NOTIFY_URL_FILE=$TMP/notify-url"
+expect_fail "a missing URL file is an error" config "$TOKEN" "$RECS" "NOTIFY_URL_FILE=$TMP/nope"
+expect_fail "an empty URL file is an error" config "$TOKEN" "$RECS" "NOTIFY_URL_FILE=$TMP/notify-url-empty"
+
+for url in 'https://a.example/x"y' 'https://a.example/x\y' 'https://a.example/x y' \
+    "https://a.example/x${NL}y" ftp://a.example/x https:// a.example/x; do
+    expect_fail "NOTIFY_URL '$url' is rejected" config "$TOKEN" "$RECS" "NOTIFY_URL=$url" NOTIFY_FORMAT=json
+done
+config "$TOKEN" "$RECS" 'NOTIFY_URL=https://hooks.slack.com/services/secretpath"x' >/dev/null 2>&1
+expect_fail "a rejected URL is not echoed in the log" grep -q secretpath "$TMP/config.log"
+expect_ok "a plain http URL is allowed" \
+    config "$TOKEN" "$RECS" NOTIFY_URL=http://ntfy.example/secret-topic NOTIFY_FORMAT=ntfy
+expect_ok "a plain http URL is warned about" grep -q 'NOTIFY_URL uses plain http' "$TMP/config.log"
+expect_fail "the warning leaves out the URL" grep -q secret-topic "$TMP/config.log"
+expect_fail "an unencoded special character in a password is an error" \
+    config "$TOKEN" "$RECS" 'NOTIFY_URL=https://user:p?ss@ntfy.example/t' NOTIFY_FORMAT=ntfy
+expect_fail "the password is not echoed in the log" grep -qF 'p?ss' "$TMP/config.log"
+child_sees_url() {
+    sh -c 'printf "%s/%s" "${NOTIFY_URL:-unset}" "${NFA_NOTIFY_URL:-unset}"'
+}
+expect_eq "the URL is not passed to child processes" unset/unset \
+    "$(config "$TOKEN" "$RECS" "$DISCORD" -- child_sees_url)"
+expect_ok "the startup log names the format and host" \
+    config "$TOKEN" "$RECS" "$DISCORD" -- describes 'notifications: discord via discord.com'
+expect_fail "the startup log leaves out the rest of the URL" \
+    config "$TOKEN" "$RECS" "$DISCORD" -- describes 'abc-DEF'
+
 config RECORDS=home.example.com INTERVAL=abc TTL=7 >/dev/null 2>&1
 expect_eq "every config problem is reported at once" 3 "$(grep -c 'config:' "$TMP/config.log")"
 
@@ -431,6 +499,102 @@ expect_eq "both address families are described" \
     'zone sub.example.com: keeping A and AAAA records for host.sub.example.com pointed at this host' \
     "$(IPV4=true; IPV6=true; describe_zones | sed -n 's/^[^ ]* [a-z]* *//; 2p')"
 ZONE_MAP=''
+
+# --- notifications ----------------------------------------------------------
+
+for case in 'https://discord.com/api/webhooks/1/x discord.com' \
+    'https://user:pass@ntfy.example:8443/topic?auth=x ntfy.example' \
+    'http://NTFY.Example/t ntfy.example' \
+    'https://[2001:db8::1]:8080/x [2001:db8::1]' \
+    'https://gotify.example/message?token=abc gotify.example' \
+    'https://host.example#frag host.example' \
+    'https://host.example host.example'; do
+    expect_eq "host of ${case% *}" "${case#* }" "$(url_host "${case% *}")"
+done
+
+update_msg="home.example.com A 1.2.3.4 -> 5.6.7.8${NL}vpn.example.com A created with 5.6.7.8"
+update_json='home.example.com A 1.2.3.4 -> 5.6.7.8\nvpn.example.com A created with 5.6.7.8'
+payload() {
+    notify_body "$@" | jq -cS .
+}
+expect_eq "Discord message" \
+    "{\"allowed_mentions\":{\"parse\":[]},\"content\":\"$update_json\",\"username\":\"No Fixed Address\"}" \
+    "$(payload discord updated "$update_msg")"
+expect_eq "Slack message, with markup characters escaped" \
+    '{"text":"No Fixed Address: home.example.com A 1.2.3.4 -&gt; 5.6.7.8\nvpn.example.com A created with 5.6.7.8"}' \
+    "$(payload slack updated "$update_msg")"
+expect_eq "Gotify message" "{\"message\":\"$update_json\",\"priority\":4,\"title\":\"No Fixed Address\"}" \
+    "$(payload gotify updated "$update_msg")"
+expect_eq "Gotify failures are high priority" 8 "$(notify_body gotify failing x | jq -r .priority)"
+expect_eq "Apprise message" \
+    '{"body":"needs attention:\nx","format":"text","title":"No Fixed Address","type":"failure"}' \
+    "$(payload apprise failing "needs attention:${NL}x")"
+expect_eq "Apprise recovery" success "$(notify_body apprise recovered x | jq -r .type)"
+expect_eq "Apprise update" info "$(notify_body apprise updated x | jq -r .type)"
+expect_eq "JSON message lists the changes" \
+    "{\"changes\":[\"home.example.com A 1.2.3.4 -> 5.6.7.8\",\"vpn.example.com A created with 5.6.7.8\"],\"event\":\"updated\",\"message\":\"$update_json\",\"title\":\"No Fixed Address\"}" \
+    "$(payload json updated "$update_msg")"
+expect_eq "JSON failure lists no changes" '[]' "$(notify_body json failing "needs attention:${NL}x" | jq -c .changes)"
+expect_eq "ntfy message is plain text" "$update_msg" "$(notify_body ntfy updated "$update_msg")"
+expect_eq "text message is prefixed with the title" "No Fixed Address: working again (IPv4 5.6.7.8)" \
+    "$(notify_body text recovered 'working again (IPv4 5.6.7.8)')"
+long_message=$(printf '%02500d' 0)
+expect_eq "long Discord messages are cut to 2000 characters" 2000 \
+    "$(notify_body discord failing "$long_message" | jq -r '.content | length')"
+expect_eq "cut Discord messages end with an ellipsis" '...' \
+    "$(notify_body discord failing "$long_message" | jq -r '.content[-3:]')"
+is_json() {
+    printf '%s' "$1" | jq -e . >/dev/null
+}
+for f in discord slack gotify apprise json; do
+    expect_ok "$f message with quotes and backslashes is valid JSON" \
+        is_json "$(notify_body "$f" failing "a \"quoted\" \\path\\ and a${TAB}tab")"
+done
+expect_eq "ntfy tags and priority for a failure" 'rotating_light high' \
+    "$(notify_level tag failing) $(notify_level ntfy failing)"
+expect_eq "ntfy tags and priority for an update" 'white_check_mark default' \
+    "$(notify_level tag updated) $(notify_level ntfy updated)"
+expect_ok "nothing is sent when notifications are off" notify updated x
+
+CHECK_CHANGES=''
+note_change 'a.example.com A 1.2.3.4 -> 5.6.7.8' >/dev/null
+note_change 'b.example.com A created with 5.6.7.8' >/dev/null
+expect_eq "changes are kept for the notification" \
+    "a.example.com A 1.2.3.4 -> 5.6.7.8${NL}b.example.com A created with 5.6.7.8" "$CHECK_CHANGES"
+CHECK_CHANGES=''
+expect_eq "warnings and errors are kept for the notification, even below LOG_LEVEL" "quiet warning${NL}quiet error" \
+    "$(LOG_THRESHOLD=50; CHECK_PROBLEMS=''; log warn 'quiet warning'; log info 'not a problem'; log error 'quiet error'; printf '%s' "$CHECK_PROBLEMS")"
+
+# notify_events STEP...
+# Runs check_failed and check_succeeded through STEPs (RC@TIME for a failed
+# check, ok for a successful one) and prints the notifications they send.
+notify_events() {
+    (
+        # shellcheck disable=SC2329 # called by check_failed and check_succeeded
+        notify() {
+            printf '%s;' "$1"
+        }
+        FAILING_SINCE=''
+        NOTIFIED_FAILING=0
+        CHECK_PROBLEMS=x
+        CHECK_SUMMARY='IPv4 5.6.7.8'
+        for step do
+            case $step in
+                ok) check_succeeded ;;
+                *) check_failed "${step%@*}" "${step#*@}" ;;
+            esac
+        done
+    )
+}
+expect_eq "a short outage sends nothing" '' "$(notify_events 1@1000 1@1060 1@1180 ok)"
+expect_eq "a lasting outage is reported once, when the health check gives up, then its end" \
+    'failing;recovered;' "$(notify_events 1@1000 1@8199 1@8200 1@9000 ok ok)"
+expect_eq "a problem that needs attention is reported at once, and once" \
+    'failing;recovered;' "$(notify_events 2@1000 2@1001 1@1002 2@1003 ok)"
+expect_eq "an outage that turns into a problem that needs attention is reported again" \
+    'failing;failing;' "$(notify_events 1@1000 1@8200 2@8300 2@8400 1@8500)"
+expect_eq "each run of failures is timed from its own start" '' "$(notify_events 1@1000 ok 1@8300)"
+expect_eq "nothing is sent for a success after a quiet failure" '' "$(notify_events 1@1000 ok ok)"
 
 # --- health check -----------------------------------------------------------
 
