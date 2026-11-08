@@ -1,5 +1,5 @@
-# Copy to docker-compose.yml, fill in your zone and records, put the API token
-# in a .env file next to it (CF_API_TOKEN=...), then run: docker compose up -d
+# Copy to docker-compose.yml, fill in your records, put the API token in a
+# .env file next to it (CF_API_TOKEN=...), then run: docker compose up -d
 services:
   nofixedaddress:
     image: ghcr.io/mdr6273/no-fixed-address:latest
@@ -7,8 +7,7 @@ services:
     restart: unless-stopped
     environment:
       CF_API_TOKEN: ${CF_API_TOKEN}
-      ZONE: example.com
-      RECORDS: home.example.com,vpn.example.com
+      RECORDS: home.example.com,vpn.example.com  # can be in different domains
       INTERVAL: "300"              # seconds between checks; the image's default is 86400
       TZ: America/Chicago
       # Everything below is optional; these are the defaults.
@@ -19,6 +18,8 @@ services:
       # CREATE_IF_MISSING: "false"
       # DRY_RUN: "false"           # log what would change without changing it
       # LOG_LEVEL: info            # debug, info, warn or error
+      # NOTIFY_URL: ""             # a webhook for changes and problems; see Notifications in the README
+      # NOTIFY_FORMAT: auto        # discord, slack, ntfy, gotify, apprise, json or text
     # The container needs no privileges and only writes to /tmp.
     read_only: true
     tmpfs:

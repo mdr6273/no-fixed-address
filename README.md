@@ -52,7 +52,6 @@ else:
    ```sh
    docker run --rm \
      -e CF_API_TOKEN=your-token \
-     -e ZONE=example.com \
      -e RECORDS=home.example.com \
      -e INTERVAL=300 \
      -e DRY_RUN=true \
@@ -104,7 +103,7 @@ either way.
    ```
 
 2. On the **Docker** tab, select **Add Container**, and choose **No-Fixed-Address** from the **Template** list (under user templates).
-3. Fill in **Cloudflare API token**, **Zone** and **Records**. Records are full names, such as `home.example.com`, not just `home`. For the first start, set **Dry run** to `true`.
+3. Fill in **Cloudflare API token** and **Records**. Records are full names, such as `home.example.com`, not just `home`, and can be in different domains. For the first start, set **Dry run** to `true`.
 4. Select **Apply**, then open the container's log from its icon on the Docker tab. It should show the token being verified and what it would change.
 5. When the log looks right, edit the container, set **Dry run** back to `false`, and apply.
 
@@ -114,7 +113,8 @@ Notes for Unraid:
 - **Updates:** when a new version is published, the Docker tab shows an update for the container. Apply it from there, after reading the [changelog](CHANGELOG.md). See [Updating](#updating).
 - **Time zone:** Unraid passes your server's time zone to every container, so log timestamps already match it. The template has no `TZ` field on purpose, because a blank one would override that.
 - **IPv6:** the default bridge network has no IPv6. To update AAAA records, set **Network Type** to **Host**, or use a custom network with IPv6 enabled.
-- **Advanced settings:** TTL, log level, a token file and the lookup URLs are under **Show more settings**.
+- **Advanced settings:** [notifications](#notifications), TTL, log level, a token file and the lookup URLs are under **Show more settings**.
+- **Containers from before 1.1.0** have a **Zone** field. It still works, and you can also clear it: the container then finds the zone of each record itself.
 - **Locked down:** the template's **Extra Parameters** (shown with **Advanced View**) drop all Linux capabilities, block privilege escalation, and make the container's filesystem read-only apart from a scratch area at `/tmp`. The container needs nothing more, so leave them in place.
 
 ## docker run
@@ -126,7 +126,6 @@ docker run -d \
   --read-only --tmpfs /tmp \
   --cap-drop ALL --security-opt no-new-privileges \
   -e CF_API_TOKEN=your-token \
-  -e ZONE=example.com \
   -e RECORDS=home.example.com,vpn.example.com \
   -e INTERVAL=300 \
   -e TZ=America/Chicago \
@@ -152,7 +151,6 @@ services:
     restart: unless-stopped
     environment:
       CF_API_TOKEN: ${CF_API_TOKEN}   # from a .env file next to the compose file
-      ZONE: example.com
       RECORDS: home.example.com,vpn.example.com
       INTERVAL: "300"
       TZ: America/Chicago
@@ -171,7 +169,6 @@ services:
     restart: unless-stopped
     environment:
       CF_API_TOKEN_FILE: /run/secrets/cf_api_token
-      ZONE: example.com
       RECORDS: home.example.com
       INTERVAL: "300"
     secrets:
@@ -203,8 +200,8 @@ changed before applying it.
 - **Docker Compose:** in the folder with your compose file, run `docker compose pull`, then `docker compose up -d`.
 - **docker run:** run `docker pull ghcr.io/mdr6273/no-fixed-address:latest`, remove the container with `docker rm -f nofixedaddress`, and start it again with the same `docker run` command. A running container keeps using the image it started with.
 
-These steps assume the `latest` tag, and work the same for `1` and `1.0`. If you
-pinned an exact version such as `1.0.0`, change the tag to the new version
+These steps assume the `latest` tag, and work the same for `1` and `1.1`. If you
+pinned an exact version such as `1.1.0`, change the tag to the new version
 instead. A pinned tag never changes, so Unraid never shows an update for it.
 
 ### Versions
@@ -214,8 +211,8 @@ kind of release it is ([semantic versioning](https://semver.org/)):
 
 | Release | What changed | Before updating |
 | --- | --- | --- |
-| 1.0.**1** | Fixes, including rebuilds for security updates in the base image | Nothing to do |
-| 1.**1**.0 | New features, such as a new optional setting; existing setups work as before | Nothing to do |
+| 1.1.**1** | Fixes, including rebuilds for security updates in the base image | Nothing to do |
+| 1.**2**.0 | New features, such as a new optional setting; existing setups work as before | Nothing to do |
 | **2**.0.0 | Breaking changes, such as a renamed setting or a different default | Read the [changelog](CHANGELOG.md) |
 
 Breaking means a change to the names, defaults or meaning of the settings in
@@ -229,8 +226,8 @@ Each release is published under several tags:
 | --- | --- | --- |
 | `latest` | every release | always run the newest version (the Unraid template uses this) |
 | `1` | 1.x.y releases | get fixes and features, but never a breaking change |
-| `1.0` | 1.0.x releases | get fixes only |
-| `1.0.0` | nothing; it never changes | update only when you choose |
+| `1.1` | 1.1.x releases | get fixes only |
+| `1.1.0` | nothing; it never changes | update only when you choose |
 
 ## Configuration
 
@@ -296,8 +293,8 @@ zones and records, detecting the address) but never writes to Cloudflare.
 Changes it would have made are logged with a `[dry-run]` prefix:
 
 ```text
-2026-10-29T23:23:52-0500 info  No Fixed Address 1.0.0 starting
-2026-10-29T23:23:53-0500 info  checking every 86400s; proxied: as is, ttl: as is, create missing records: true
+2026-10-29T23:23:52-0500 info  No Fixed Address 1.1.0 starting
+2026-10-29T23:23:53-0500 info  checking every 300s; proxied: as is, ttl: as is, create missing records: true
 2026-10-29T23:23:53-0500 info  dry run: changes are logged but not applied
 2026-10-29T23:23:54-0500 info  API token verified
 2026-10-29T23:23:54-0500 info  zone example.com: keeping A records for home.example.com, vpn.example.com pointed at this host
