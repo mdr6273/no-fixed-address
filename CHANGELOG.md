@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-08
+
+Several zones, notifications, and images for 32-bit ARM. Every setting from 1.0.0 works as before, so updating needs no changes.
+
 ### Added
 
 - Notifications. Set `NOTIFY_URL` (or `NOTIFY_URL_FILE`) to a webhook, and `NOTIFY_FORMAT` to `discord`, `slack`, `ntfy`, `gotify`, `apprise`, `json` or `text` (`auto` recognises Discord and Slack), and the container sends a message when records change, when something needs attention, and when it works again. Trouble that may pass is only reported once it has lasted as long as the health check allows, two hours, and a failed notification never holds up an update. The URL is treated as a secret, like the token. Off unless set.
@@ -15,6 +19,7 @@ All notable changes to this project are documented here. The format follows
 ### Changed
 
 - The Unraid template, the `docker run` and Compose examples now check every 5 minutes (`INTERVAL=300`) instead of once a day, like other dynamic DNS updaters. The image's own default is unchanged, so an existing container keeps its interval; to switch, set `INTERVAL` to `300`.
+- The Unraid template, the README's examples and `docker-compose.example.yml` no longer set `ZONE`, and the template has the notification settings under **Show more settings**. A container installed from an older template keeps its **Zone** field: leaving it or clearing it both work.
 - The `zone example.com: keeping A records for ...` line is now logged after the token is verified, once per zone.
 
 ## [1.0.0] - 2026-11-07
@@ -51,7 +56,8 @@ The first stable release, after running on real hardware through restarts, updat
 - Multi-architecture image (linux/amd64, linux/arm64) on GitHub Container Registry, running as a non-root user.
 - Unraid template and icon. The template runs the container with no capabilities and a read-only filesystem.
 
-[Unreleased]: https://github.com/mdr6273/no-fixed-address/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/mdr6273/no-fixed-address/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/mdr6273/no-fixed-address/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/mdr6273/no-fixed-address/compare/v0.0.3...v1.0.0
 [0.0.3]: https://github.com/mdr6273/no-fixed-address/compare/v0.0.2...v0.0.3
 [0.0.2]: https://github.com/mdr6273/no-fixed-address/compare/v0.0.1...v0.0.2
