@@ -95,11 +95,15 @@ either way.
 
 ## Unraid
 
+The Unraid template is maintained in Richardson Resources' Community
+Applications repository, [unraid-apps](https://github.com/mdr6273/unraid-apps),
+as `templates/nofixedaddress.xml`. To install it:
+
 1. Open a terminal on the server (the `>_` icon in the web UI) and download the template:
 
    ```sh
    wget -O /boot/config/plugins/dockerMan/templates-user/my-No-Fixed-Address.xml \
-     https://raw.githubusercontent.com/mdr6273/no-fixed-address/main/unraid/nofixedaddress.xml
+     https://raw.githubusercontent.com/mdr6273/unraid-apps/main/templates/nofixedaddress.xml
    ```
 
 2. On the **Docker** tab, select **Add Container**, and choose **No-Fixed-Address** from the **Template** list (under user templates).
@@ -116,6 +120,7 @@ Notes for Unraid:
 - **Advanced settings:** [notifications](#notifications), TTL, log level, a token file and the lookup URLs are under **Show more settings**.
 - **Containers from before 1.1.0** have a **Zone** field. It still works, and you can also clear it: the container then finds the zone of each record itself.
 - **Locked down:** the template's **Extra Parameters** (shown with **Advanced View**) drop all Linux capabilities, block privilege escalation, and make the container's filesystem read-only apart from a scratch area at `/tmp`. The container needs nothing more, so leave them in place.
+- **Older links:** before [unraid-apps](https://github.com/mdr6273/unraid-apps) existed, the template was published from this repository. The [unraid/](unraid/) folder keeps a copy of it and of the icon so that those links, and containers installed from them, keep working. It is the same template; see [unraid/README.md](unraid/README.md).
 
 ## docker run
 

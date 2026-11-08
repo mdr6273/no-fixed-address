@@ -4,6 +4,14 @@
     There is deliberately no TZ field: Unraid already passes the server's time
     zone to every container, and a blank field would override it.
   -->
+  <!--
+    This is the canonical copy of the template, published through Richardson
+    Resources' Community Applications repository:
+    https://github.com/mdr6273/unraid-apps
+    The copy under unraid/ in https://github.com/mdr6273/no-fixed-address is a
+    mirror kept for older links. It is refreshed by copying this file, so edit
+    the template here, not there.
+  -->
   <Name>No-Fixed-Address</Name>
   <Repository>ghcr.io/mdr6273/no-fixed-address:latest</Repository>
   <Registry>https://github.com/mdr6273/no-fixed-address/pkgs/container/no-fixed-address</Registry>
@@ -16,8 +24,8 @@
   <Overview>Self-hosted dynamic DNS for Cloudflare DNS. Keeps A (and optionally AAAA) records pointed at your server's current public IP address, so names like home.example.com keep working after your ISP changes it. There is no third-party account to renew or confirm every month: all it needs is a Cloudflare API token limited to the zones your records are in. It can also notify you through Discord, Slack, ntfy, Gotify, Apprise or any webhook. It checks at startup and then every 5 minutes by default, and only writes when something has changed. Set Dry run to true for the first start to see what it would change without changing anything. The project page has step-by-step setup instructions, including creating the token.</Overview>
   <Category>Network:DNS</Category>
   <WebUI/>
-  <TemplateURL>https://raw.githubusercontent.com/mdr6273/no-fixed-address/main/unraid/nofixedaddress.xml</TemplateURL>
-  <Icon>https://raw.githubusercontent.com/mdr6273/no-fixed-address/main/unraid/nofixedaddress.png</Icon>
+  <TemplateURL>https://raw.githubusercontent.com/mdr6273/unraid-apps/main/templates/nofixedaddress.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/mdr6273/unraid-apps/main/icons/nofixedaddress.png</Icon>
   <ExtraParams>--cap-drop=ALL --security-opt=no-new-privileges --read-only --tmpfs /tmp</ExtraParams>
   <PostArgs/>
   <CPUset/>
