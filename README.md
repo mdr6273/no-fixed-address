@@ -29,7 +29,7 @@ Cloudflare's API can update the record directly, and an API token doesn't
 expire unless you tell it to. No Fixed Address does exactly that, and nothing
 else:
 
-- **Set and forget.** Checks when it starts and then once a day (configurable), and only writes when the address has actually changed.
+- **Set and forget.** Checks when it starts and then every five minutes (configurable), and only writes when the address has actually changed.
 - **IPv4 and IPv6.** Any number of names, in one zone or several, including zone apexes and wildcards.
 - **Leaves your settings alone.** Proxy status and TTL are preserved unless you ask it to manage them.
 - **Least privilege.** One API token limited to the zones you use, a non-root container, and the token is never logged or put on a command line.
@@ -54,6 +54,7 @@ else:
      -e CF_API_TOKEN=your-token \
      -e ZONE=example.com \
      -e RECORDS=home.example.com \
+     -e INTERVAL=300 \
      -e DRY_RUN=true \
      ghcr.io/mdr6273/no-fixed-address:latest
    ```
@@ -127,6 +128,7 @@ docker run -d \
   -e CF_API_TOKEN=your-token \
   -e ZONE=example.com \
   -e RECORDS=home.example.com,vpn.example.com \
+  -e INTERVAL=300 \
   -e TZ=America/Chicago \
   ghcr.io/mdr6273/no-fixed-address:latest
 ```
@@ -152,6 +154,7 @@ services:
       CF_API_TOKEN: ${CF_API_TOKEN}   # from a .env file next to the compose file
       ZONE: example.com
       RECORDS: home.example.com,vpn.example.com
+      INTERVAL: "300"
       TZ: America/Chicago
 ```
 
@@ -170,6 +173,7 @@ services:
       CF_API_TOKEN_FILE: /run/secrets/cf_api_token
       ZONE: example.com
       RECORDS: home.example.com
+      INTERVAL: "300"
     secrets:
       - cf_api_token
 
@@ -235,7 +239,7 @@ Each release is published under several tags:
 | `CF_API_TOKEN` | *required* | The [scoped API token](#creating-the-cloudflare-api-token). |
 | `CF_API_TOKEN_FILE` | | Path to a file containing the token, such as a Docker secret. Use instead of `CF_API_TOKEN`, not as well. |
 | `RECORDS` | *required* | Comma-separated full names to keep updated, such as `home.example.com,vpn.example.com` (not just `home`). They can be in different zones: the container finds each name's zone among the zones the token can see. Wildcards such as `*.example.com` work too. Often one name is enough: see [Pointing more names at it](#pointing-more-names-at-it). |
-| `INTERVAL` | `86400` | Seconds between checks. A check always runs at startup. |
+| `INTERVAL` | `86400` | Seconds between checks. A check always runs at startup. The Unraid template and the examples here set `300` (every five minutes), like other dynamic DNS updaters; the image's own default stays at a day so that setups which never set it don't change. |
 | `IPV4` | `true` | Keep A records pointed at the public IPv4 address. |
 | `IPV6` | `false` | Keep AAAA records pointed at the public IPv6 address. Needs [IPv6 inside the container](#could-not-determine-the-public-ipv6-address). |
 | `PROXIED` | *unset* | `true` or `false` sets Cloudflare's proxy on every record. Unset leaves each record as it is. |

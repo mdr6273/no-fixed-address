@@ -14,6 +14,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- The Unraid template, the `docker run` and Compose examples now check every 5 minutes (`INTERVAL=300`) instead of once a day, like other dynamic DNS updaters. The image's own default is unchanged, so an existing container keeps its interval; to switch, set `INTERVAL` to `300`.
 - The `zone example.com: keeping A records for ...` line is now logged after the token is verified, once per zone.
 
 ## [1.0.0] - 2026-11-07
