@@ -9,9 +9,9 @@ services:
       CF_API_TOKEN: ${CF_API_TOKEN}
       ZONE: example.com
       RECORDS: home.example.com,vpn.example.com
+      INTERVAL: "300"              # seconds between checks; the image's default is 86400
       TZ: America/Chicago
       # Everything below is optional; these are the defaults.
-      # INTERVAL: "86400"          # seconds between checks
       # IPV4: "true"
       # IPV6: "false"              # needs IPv6 inside the container; see the README
       # PROXIED: ""                # blank keeps each record's current setting
