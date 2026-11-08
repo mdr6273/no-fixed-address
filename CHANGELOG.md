@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- The Unraid template and the Community Applications profile are now published from Richardson Resources' shared repository, [unraid-apps](https://github.com/mdr6273/unraid-apps). The copy under `unraid/` in this repository stays as a mirror for older links and for containers installed from them, and installs the same container.
+
 ## [1.1.0] - 2026-11-08
 
 Several zones, notifications, and images for 32-bit ARM. Every setting from 1.0.0 works as before, so updating needs no changes.

@@ -24,6 +24,7 @@ time on it.
 - **Comments explain why**, not what the next line does.
 - **Commit messages** follow [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `docs:` and so on).
 - **User-visible changes** get a line in the Unreleased section of [CHANGELOG.md](CHANGELOG.md).
+- **The Unraid template lives in [unraid-apps](https://github.com/mdr6273/unraid-apps)**, as `templates/nofixedaddress.xml`. Change it there first. Then refresh the copy in [unraid/](unraid/README.md) with the one-line command in that README, in the same pull request as the change that needs it.
 
 ## Releasing
 
