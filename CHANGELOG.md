@@ -8,6 +8,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- No Fixed Address is now listed in Unraid's Community Applications, so the README's Unraid steps install it from the **Apps** tab. Downloading the template by hand still works and is described there too.
+- The Unraid template's **Proxied** setting is now a dropdown with a blank choice, `true` and `false`, like the template's other on/off settings. Blank still leaves each record's proxy status as it is. Unraid doesn't change the form of a container that is already installed: to get the dropdown there, edit the container, select **Edit** next to **Proxied**, set **Default Value** to `|true|false`, and save.
 - The Unraid template and the Community Applications profile are now published from Richardson Resources' shared repository, [unraid-apps](https://github.com/mdr6273/unraid-apps). The copy under `unraid/` in this repository stays as a mirror for older links and for containers installed from them, and installs the same container.
 - The Unraid template's registry link is now `https://ghcr.io/mdr6273/no-fixed-address`, which opens the image's page.
 

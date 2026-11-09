@@ -95,21 +95,24 @@ either way.
 
 ## Unraid
 
-The Unraid template is maintained in Richardson Resources' Community
-Applications repository, [unraid-apps](https://github.com/mdr6273/unraid-apps),
-as `templates/nofixedaddress.xml`. To install it:
+No Fixed Address is listed in Unraid's Community Applications, from Richardson
+Resources' repository, [unraid-apps](https://github.com/mdr6273/unraid-apps).
+To install it:
 
-1. Open a terminal on the server (the `>_` icon in the web UI) and download the template:
+1. On the **Apps** tab, search for **No-Fixed-Address** and select **Install**.
+2. Fill in **Cloudflare API token** and **Records**. Records are full names, such as `home.example.com`, not just `home`, and can be in different domains. For the first start, set **Dry run** to `true`.
+3. Select **Apply**, then open the container's log from its icon on the Docker tab. It should show the token being verified and what it would change.
+4. When the log looks right, edit the container, set **Dry run** back to `false`, and apply.
 
-   ```sh
-   wget -O /boot/config/plugins/dockerMan/templates-user/my-No-Fixed-Address.xml \
-     https://raw.githubusercontent.com/mdr6273/unraid-apps/main/templates/nofixedaddress.xml
-   ```
+To install without the Apps tab, open a terminal on the server (the `>_` icon
+in the web UI) and download the template. Then, on the **Docker** tab, select
+**Add Container**, choose **No-Fixed-Address** from the **Template** list
+(under user templates), and carry on from step 2.
 
-2. On the **Docker** tab, select **Add Container**, and choose **No-Fixed-Address** from the **Template** list (under user templates).
-3. Fill in **Cloudflare API token** and **Records**. Records are full names, such as `home.example.com`, not just `home`, and can be in different domains. For the first start, set **Dry run** to `true`.
-4. Select **Apply**, then open the container's log from its icon on the Docker tab. It should show the token being verified and what it would change.
-5. When the log looks right, edit the container, set **Dry run** back to `false`, and apply.
+```sh
+wget -O /boot/config/plugins/dockerMan/templates-user/my-No-Fixed-Address.xml \
+  https://raw.githubusercontent.com/mdr6273/unraid-apps/main/templates/nofixedaddress.xml
+```
 
 Notes for Unraid:
 
